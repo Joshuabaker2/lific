@@ -15,11 +15,12 @@ use std::sync::Arc;
 use axum::{
     body::Body,
     extract::Request,
-    http::{StatusCode, header},
+    http::{HeaderName, HeaderValue, Method, StatusCode, header},
     middleware,
     response::IntoResponse,
     routing::{any, get},
 };
+use tower_http::cors::{Any, CorsLayer};
 use clap::Parser;
 use cli::{Cli, Command, KeyAction, UserAction};
 use config::Config;
@@ -407,6 +408,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let app = authed_routes
                 .merge(oauth::router(oauth_state))
                 .fallback(get(serve_frontend))
+                // Top-level CORS layer.
+                //
+                // This wraps EVERYTHING (REST API, /mcp, OAuth, frontend). Two
+                // things matter here:
+                //
+                // 1. `CorsLayer` intercepts OPTIONS preflight requests and
+                //    short-circuits them with a 204 — they never reach the auth
+                //    middleware. Without this, browser MCP clients like Claude
+                //    Web get their preflight rejected with 401 and the actual
+                //    POST is never sent.
+                //
+                // 2. We expose MCP-specific headers (`mcp-session-id`,
+                //    `www-authenticate`) and accept the request headers MCP
+                //    clients send (`mcp-protocol-version`, `mcp-session-id`,
+                //    `last-event-id` for SSE resumption).
+                //
+                // The internal CORS layer inside `api::router()` still runs for
+                // /api/* but is effectively shadowed by this outer one.
+                .layer(build_global_cors(&cfg.server.cors_origins))
                 .layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024)); // 2 MB
 
             let addr = format!("{}:{}", cfg.server.host, cfg.server.port);
@@ -447,6 +467,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+/// Build the top-level CORS layer applied to the entire app.
+///
+/// When `cors_origins` is empty, allows any origin (suitable for a local-first
+/// tool exposed via Tailscale Funnel where the auth layer is the real gate).
+/// Otherwise, allows only the listed origins.
+///
+/// Methods, request headers, and exposed response headers are all configured
+/// for the union of REST + MCP needs. Notably we accept the MCP transport
+/// headers (`mcp-protocol-version`, `mcp-session-id`, `last-event-id`) and
+/// expose `mcp-session-id` and `www-authenticate` so MCP clients can read
+/// the session id back and so 401 responses surface the resource metadata.
+fn build_global_cors(cors_origins: &[String]) -> CorsLayer {
+    let layer = CorsLayer::new()
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::ACCEPT,
+            HeaderName::from_static("mcp-protocol-version"),
+            HeaderName::from_static("mcp-session-id"),
+            HeaderName::from_static("last-event-id"),
+        ])
+        .expose_headers([
+            header::WWW_AUTHENTICATE,
+            HeaderName::from_static("mcp-session-id"),
+        ])
+        .max_age(std::time::Duration::from_secs(86400));
+
+    if cors_origins.is_empty() {
+        layer.allow_origin(Any)
+    } else {
+        let origins: Vec<HeaderValue> = cors_origins
+            .iter()
+            .filter_map(|o| o.parse().ok())
+            .collect();
+        layer.allow_origin(origins)
+    }
 }
 
 /// Wrapper that skips auth for /api/health
@@ -498,4 +563,177 @@ async fn shutdown_signal(pool: db::DbPool) {
     info!("shutdown signal received, checkpointing WAL...");
     backup::checkpoint_wal(&pool);
     info!("shutdown complete");
+}
+
+#[cfg(test)]
+mod cors_tests {
+    use super::*;
+    use axum::Router;
+    use axum::routing::post;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    /// Build a minimal /mcp router behind an auth gate identical in spirit to
+    /// the real one (returns 401 if Authorization is missing), wrapped with
+    /// our global CORS layer.
+    fn app_with_cors(origins: &[String]) -> Router {
+        let inner = Router::new().route(
+            "/mcp",
+            post(|headers: axum::http::HeaderMap| async move {
+                if headers.get(header::AUTHORIZATION).is_none() {
+                    return (StatusCode::UNAUTHORIZED, "missing auth").into_response();
+                }
+                (StatusCode::OK, "ok").into_response()
+            }),
+        );
+        inner.layer(build_global_cors(origins))
+    }
+
+    /// A browser MCP client (Claude Web) issues a CORS preflight before the
+    /// authenticated POST. That preflight must succeed WITHOUT any
+    /// Authorization header — otherwise the browser blocks the real request
+    /// and the user sees "Authorization with the MCP server failed".
+    #[tokio::test]
+    async fn cors_preflight_to_mcp_bypasses_auth() {
+        let app = app_with_cors(&[]);
+
+        let req = Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/mcp")
+            .header("origin", "https://claude.ai")
+            .header("access-control-request-method", "POST")
+            .header("access-control-request-headers", "authorization,content-type")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = app.oneshot(req).await.unwrap();
+
+        // tower-http returns 200 OK for valid preflights (not 204, but either
+        // is RFC-compliant). The critical thing is NOT 401.
+        assert!(
+            res.status().is_success(),
+            "preflight should succeed without auth, got {}",
+            res.status()
+        );
+
+        let headers = res.headers();
+        assert_eq!(
+            headers
+                .get("access-control-allow-origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("*"),
+            "empty cors_origins should allow any origin"
+        );
+
+        let allow_methods = headers
+            .get("access-control-allow-methods")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            allow_methods.contains("POST"),
+            "POST must be in allowed methods, got: {allow_methods}"
+        );
+
+        let allow_headers = headers
+            .get("access-control-allow-headers")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        assert!(
+            allow_headers.contains("authorization"),
+            "authorization must be allowed, got: {allow_headers}"
+        );
+        assert!(
+            allow_headers.contains("mcp-session-id"),
+            "mcp-session-id must be allowed, got: {allow_headers}"
+        );
+    }
+
+    /// Real (post-preflight) requests still go through normal auth — CORS
+    /// doesn't bypass the auth middleware for the actual call.
+    #[tokio::test]
+    async fn cors_does_not_bypass_auth_on_real_request() {
+        let app = app_with_cors(&[]);
+
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/mcp")
+            .header("origin", "https://claude.ai")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// When configured with an explicit origin list, only those origins
+    /// receive an Access-Control-Allow-Origin header echoing them back.
+    #[tokio::test]
+    async fn explicit_origins_are_allowlisted() {
+        let app = app_with_cors(&["https://claude.ai".to_string()]);
+
+        let req = Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/mcp")
+            .header("origin", "https://claude.ai")
+            .header("access-control-request-method", "POST")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = app.oneshot(req).await.unwrap();
+        assert!(res.status().is_success());
+        assert_eq!(
+            res.headers()
+                .get("access-control-allow-origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("https://claude.ai")
+        );
+    }
+
+    /// MCP responses must expose the session id header so the client can
+    /// read it back — without `Access-Control-Expose-Headers`, browser
+    /// JS can't see custom response headers cross-origin.
+    #[tokio::test]
+    async fn mcp_session_id_is_exposed() {
+        // We make a synthetic GET that returns 200 with a header. The
+        // preflight response also carries the expose-headers field, so we
+        // check it there for simplicity.
+        let app = app_with_cors(&[]);
+
+        let req = Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/mcp")
+            .header("origin", "https://claude.ai")
+            .header("access-control-request-method", "POST")
+            .body(Body::empty())
+            .unwrap();
+
+        let res = app.oneshot(req).await.unwrap();
+        // Expose-Headers is sent on actual responses, not preflight, in tower-http.
+        // So instead, fire a real (failing) request and check exposed headers.
+        let _ = res.into_body().collect().await;
+
+        let app = app_with_cors(&[]);
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/mcp")
+            .header("origin", "https://claude.ai")
+            .body(Body::empty())
+            .unwrap();
+        let res = app.oneshot(req).await.unwrap();
+        let expose = res
+            .headers()
+            .get("access-control-expose-headers")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        assert!(
+            expose.contains("mcp-session-id"),
+            "mcp-session-id must be exposed, got: {expose}"
+        );
+        assert!(
+            expose.contains("www-authenticate"),
+            "www-authenticate must be exposed, got: {expose}"
+        );
+    }
 }
