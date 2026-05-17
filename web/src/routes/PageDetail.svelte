@@ -375,16 +375,19 @@
             </div>
           {:else}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <!-- Double-click to enter edit mode. Single clicks are
+                 preserved so users can interact with rendered markdown
+                 (links, checkboxes) without accidentally editing. -->
             <div
               class="transition-colors min-h-[120px]
                      {editable ? 'cursor-text hover:bg-[var(--bg-subtle)] rounded-md' : ''}"
-              onclick={startEditContent}
+              ondblclick={startEditContent}
             >
               {#if page.content.trim()}
                 <Markdown content={page.content} />
               {:else}
                 <p class="text-[0.875rem] text-[var(--text-faint)] italic py-2">
-                  {editable ? "Click to start writing..." : "Empty page"}
+                  {editable ? "Double-click to start writing..." : "Empty page"}
                 </p>
               {/if}
             </div>
