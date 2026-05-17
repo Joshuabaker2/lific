@@ -57,45 +57,49 @@ pub fn get_issue(conn: &Connection, id: i64) -> Result<Issue, LificError> {
         .query_map(params![id], |row| row.get(0))?
         .collect::<Result<Vec<String>, _>>()?;
 
-    let project_ident = &issue.identifier.split('-').next().unwrap_or("").to_string();
-
     let mut blocks_stmt = conn.prepare(
-        "SELECT i.sequence FROM issue_relations ir
+        "SELECT p.identifier, i.sequence FROM issue_relations ir
          JOIN issues i ON i.id = ir.target_id
+         JOIN projects p ON p.id = i.project_id
          WHERE ir.source_id = ?1 AND ir.relation_type = 'blocks'",
     )?;
     issue.blocks = blocks_stmt
         .query_map(params![id], |row| {
-            let seq: i64 = row.get(0)?;
-            Ok(format!("{project_ident}-{seq}"))
+            let proj: String = row.get(0)?;
+            let seq: i64 = row.get(1)?;
+            Ok(format!("{proj}-{seq}"))
         })?
         .collect::<Result<Vec<String>, _>>()?;
 
     let mut blocked_stmt = conn.prepare(
-        "SELECT i.sequence FROM issue_relations ir
+        "SELECT p.identifier, i.sequence FROM issue_relations ir
          JOIN issues i ON i.id = ir.source_id
+         JOIN projects p ON p.id = i.project_id
          WHERE ir.target_id = ?1 AND ir.relation_type = 'blocks'",
     )?;
     issue.blocked_by = blocked_stmt
         .query_map(params![id], |row| {
-            let seq: i64 = row.get(0)?;
-            Ok(format!("{project_ident}-{seq}"))
+            let proj: String = row.get(0)?;
+            let seq: i64 = row.get(1)?;
+            Ok(format!("{proj}-{seq}"))
         })?
         .collect::<Result<Vec<String>, _>>()?;
 
     let mut relates_stmt = conn.prepare(
-        "SELECT i.sequence FROM issue_relations ir
+        "SELECT p.identifier, i.sequence FROM issue_relations ir
          JOIN issues i ON i.id = CASE
             WHEN ir.source_id = ?1 THEN ir.target_id
             ELSE ir.source_id
          END
+         JOIN projects p ON p.id = i.project_id
          WHERE (ir.source_id = ?1 OR ir.target_id = ?1)
            AND ir.relation_type = 'relates_to'",
     )?;
     issue.relates_to = relates_stmt
         .query_map(params![id], |row| {
-            let seq: i64 = row.get(0)?;
-            Ok(format!("{project_ident}-{seq}"))
+            let proj: String = row.get(0)?;
+            let seq: i64 = row.get(1)?;
+            Ok(format!("{proj}-{seq}"))
         })?
         .collect::<Result<Vec<String>, _>>()?;
 
@@ -775,6 +779,30 @@ mod tests {
         let blocked = get_issue(&conn, i2.id).unwrap();
         assert!(blocker.blocks.contains(&"TST-2".to_string()));
         assert!(blocked.blocked_by.contains(&"TST-1".to_string()));
+    }
+
+    #[test]
+    fn get_issue_relations_preserve_cross_project_identifier() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let pid_a = seed_project(&conn, "AAA");
+        let pid_b = seed_project(&conn, "BBB");
+        // AAA-1 blocks BBB-1; AAA-2 relates_to BBB-1
+        let a1 = quick_issue(&conn, pid_a, "A one", "todo", "none");
+        let a2 = quick_issue(&conn, pid_a, "A two", "todo", "none");
+        let b1 = quick_issue(&conn, pid_b, "B one", "todo", "none");
+        link_issues(&conn, a1.id, b1.id, "blocks").unwrap();
+        link_issues(&conn, a2.id, b1.id, "relates_to").unwrap();
+
+        let got_a1 = get_issue(&conn, a1.id).unwrap();
+        assert_eq!(got_a1.blocks, vec!["BBB-1".to_string()]);
+
+        let got_b1 = get_issue(&conn, b1.id).unwrap();
+        assert_eq!(got_b1.blocked_by, vec!["AAA-1".to_string()]);
+        assert_eq!(got_b1.relates_to, vec!["AAA-2".to_string()]);
+
+        let got_a2 = get_issue(&conn, a2.id).unwrap();
+        assert_eq!(got_a2.relates_to, vec!["BBB-1".to_string()]);
     }
 
     #[test]
