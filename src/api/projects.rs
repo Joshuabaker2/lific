@@ -535,6 +535,143 @@ mod tests {
         assert_eq!(data["name"], "Renamed by admin");
     }
 
+    // ── LIF-103: tristate clear via HTTP ─────────────────────────────────
+    //
+    // The model now distinguishes "field absent" from "field explicitly null"
+    // so clients can wipe emoji/lead back to NULL. Before the fix, both
+    // shapes collapsed to None and the update path skipped the column.
+
+    #[tokio::test]
+    async fn update_with_null_emoji_clears_emoji() {
+        let (db, admin, _, _, _) = setup_lead_test();
+        let app = app_as_user(db.clone(), &admin);
+
+        // Seed a project with an emoji set.
+        let project = {
+            let conn = db.write().unwrap();
+            crate::db::queries::create_project(
+                &conn,
+                &CreateProject {
+                    name: "With Emoji".into(),
+                    identifier: "EMJ".into(),
+                    description: String::new(),
+                    emoji: Some("🧪".into()),
+                    lead_user_id: Some(admin.id),
+                },
+            )
+            .unwrap()
+        };
+        assert_eq!(project.emoji.as_deref(), Some("🧪"));
+
+        // PUT with explicit null.
+        let update = serde_json::json!({"emoji": null});
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/api/projects/{}", project.id))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_vec(&update).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let data = parse_json(resp).await;
+        assert!(data["emoji"].is_null(), "expected null emoji, got: {}", data["emoji"]);
+    }
+
+    #[tokio::test]
+    async fn update_with_null_lead_clears_lead() {
+        let (db, admin, lead, _, project_id) = setup_lead_test();
+        // setup_lead_test creates project with lead set.
+        let app = app_as_user(db.clone(), &admin); // admin can edit any project
+
+        // Sanity check: lead is set.
+        let pre: serde_json::Value = {
+            let conn = db.read().unwrap();
+            let p = crate::db::queries::get_project(&conn, project_id).unwrap();
+            serde_json::to_value(&p).unwrap()
+        };
+        assert_eq!(pre["lead_user_id"].as_i64(), Some(lead.id));
+
+        let update = serde_json::json!({"lead_user_id": null});
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/api/projects/{project_id}"))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_vec(&update).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let data = parse_json(resp).await;
+        assert!(
+            data["lead_user_id"].is_null(),
+            "expected null lead_user_id, got: {}",
+            data["lead_user_id"]
+        );
+    }
+
+    #[tokio::test]
+    async fn update_with_empty_body_changes_nothing() {
+        let (db, admin, lead, _, project_id) = setup_lead_test();
+        let app = app_as_user(db, &admin);
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/api/projects/{project_id}"))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(b"{}".to_vec()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let data = parse_json(resp).await;
+        // Project from setup_lead_test has name "Lead Test", identifier "LDT",
+        // lead set, no emoji.
+        assert_eq!(data["name"], "Lead Test");
+        assert_eq!(data["identifier"], "LDT");
+        assert_eq!(data["lead_user_id"].as_i64(), Some(lead.id));
+        assert!(data["emoji"].is_null());
+    }
+
+    #[tokio::test]
+    async fn update_lead_to_nonexistent_user_returns_400() {
+        let (db, admin, _, _, project_id) = setup_lead_test();
+        let app = app_as_user(db, &admin);
+
+        let update = serde_json::json!({"lead_user_id": 99999});
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/api/projects/{project_id}"))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(serde_json::to_vec(&update).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let data = parse_json(resp).await;
+        assert!(
+            data["error"].as_str().unwrap_or("").contains("not found"),
+            "expected 'not found' in error, got: {}",
+            data["error"]
+        );
+    }
+
     #[tokio::test]
     async fn create_project_defaults_lead_to_creator() {
         // setup_lead_test gives us a real lead user we can authenticate as.

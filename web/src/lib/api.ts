@@ -246,8 +246,10 @@ export interface UpdateProjectInput {
   name?: string;
   identifier?: string;
   description?: string;
-  emoji?: string;
-  lead_user_id?: number;
+  // LIF-103: nullable so clients can explicitly clear (PATCH semantics).
+  // Omit key = "don't change", null = "set to NULL".
+  emoji?: string | null;
+  lead_user_id?: number | null;
 }
 
 export async function updateProject(id: number, input: UpdateProjectInput) {

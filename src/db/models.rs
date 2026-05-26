@@ -27,8 +27,14 @@ pub struct UpdateProject {
     pub name: Option<String>,
     pub identifier: Option<String>,
     pub description: Option<String>,
-    pub emoji: Option<String>,
-    pub lead_user_id: Option<i64>,
+    /// LIF-103: tristate so clients can explicitly clear the emoji back to NULL.
+    /// None = field absent (don't change), Some(None) = set NULL, Some(Some(s)) = set string.
+    #[serde(default, deserialize_with = "crate::db::models::deserialize_nullable")]
+    pub emoji: Option<Option<String>>,
+    /// LIF-103: tristate so clients can explicitly clear the lead back to NULL.
+    /// None = field absent (don't change), Some(None) = set NULL, Some(Some(id)) = set id.
+    #[serde(default, deserialize_with = "crate::db::models::deserialize_nullable")]
+    pub lead_user_id: Option<Option<i64>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

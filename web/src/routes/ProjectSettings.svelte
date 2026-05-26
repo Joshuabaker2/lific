@@ -98,8 +98,11 @@
       input.identifier = identifier.trim().toUpperCase();
     }
     if (description.trim() !== project.description) input.description = description.trim();
-    const newEmoji = emoji.trim() || undefined;
-    if (newEmoji !== (project.emoji ?? undefined)) input.emoji = newEmoji ?? "";
+    // LIF-103: backend now treats null as "clear" and absent as "preserve".
+    // Send null for cleared emoji rather than "" (which the backend used to
+    // store as an empty string).
+    const newEmoji = emoji.trim() || null;
+    if (newEmoji !== (project.emoji ?? null)) input.emoji = newEmoji;
     if (leadUserId !== project.lead_user_id) input.lead_user_id = leadUserId;
 
     const res = await updateProject(project.id, input);

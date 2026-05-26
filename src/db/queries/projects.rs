@@ -115,16 +115,38 @@ pub fn update_project(
                 params![unescape_text(description), id],
             )?;
         }
-        if let Some(ref emoji) = input.emoji {
+        // LIF-103: tristate fields. Outer Some means the client sent the key;
+        // inner None means they want NULL. rusqlite binds Option<T> to NULL
+        // automatically when the inner is None.
+        if let Some(emoji) = &input.emoji {
             conn.execute(
                 "UPDATE projects SET emoji = ?1 WHERE id = ?2",
-                params![emoji, id],
+                params![emoji.as_ref(), id],
             )?;
         }
-        if let Some(lead_user_id) = input.lead_user_id {
+        if let Some(lead) = input.lead_user_id {
+            // When setting a non-null lead, validate the user exists so we
+            // return a 400 with a clear message instead of letting the FK
+            // constraint surface as a generic 500.
+            if let Some(uid) = lead {
+                let exists = match conn.query_row(
+                    "SELECT 1 FROM users WHERE id = ?1",
+                    params![uid],
+                    |_| Ok(true),
+                ) {
+                    Ok(_) => true,
+                    Err(rusqlite::Error::QueryReturnedNoRows) => false,
+                    Err(e) => return Err(e.into()),
+                };
+                if !exists {
+                    return Err(LificError::BadRequest(format!(
+                        "user {uid} not found"
+                    )));
+                }
+            }
             conn.execute(
                 "UPDATE projects SET lead_user_id = ?1 WHERE id = ?2",
-                params![lead_user_id, id],
+                params![lead, id],
             )?;
         }
         Ok(())
@@ -332,5 +354,159 @@ mod tests {
         .unwrap();
 
         assert_eq!(project.description, "line1\nline2\ttab");
+    }
+
+    // ── LIF-103: tristate clear-to-NULL semantics for emoji + lead_user_id ──
+
+    /// Seed a real user so projects with lead_user_id pass the FK constraint.
+    fn seed_user(conn: &Connection, username: &str) -> i64 {
+        conn.execute(
+            "INSERT INTO users (username, email, password_hash, display_name, is_admin, is_bot)
+             VALUES (?1, ?2, 'x', ?1, 0, 0)",
+            params![username, format!("{username}@test.local")],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    #[test]
+    fn update_can_clear_emoji() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let project = create_project(
+            &conn,
+            &CreateProject {
+                name: "Has Emoji".into(),
+                identifier: "EMJ".into(),
+                description: String::new(),
+                emoji: Some("🧪".into()),
+                lead_user_id: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(project.emoji.as_deref(), Some("🧪"));
+
+        let updated = update_project(
+            &conn,
+            project.id,
+            &UpdateProject {
+                name: None,
+                identifier: None,
+                description: None,
+                emoji: Some(None), // explicit clear
+                lead_user_id: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(updated.emoji, None);
+    }
+
+    #[test]
+    fn update_can_clear_lead() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let uid = seed_user(&conn, "alice");
+        let project = create_project(
+            &conn,
+            &CreateProject {
+                name: "Has Lead".into(),
+                identifier: "LDP".into(),
+                description: String::new(),
+                emoji: None,
+                lead_user_id: Some(uid),
+            },
+        )
+        .unwrap();
+        assert_eq!(project.lead_user_id, Some(uid));
+
+        let updated = update_project(
+            &conn,
+            project.id,
+            &UpdateProject {
+                name: None,
+                identifier: None,
+                description: None,
+                emoji: None,
+                lead_user_id: Some(None), // explicit clear
+            },
+        )
+        .unwrap();
+        assert_eq!(updated.lead_user_id, None);
+    }
+
+    #[test]
+    fn update_absent_field_preserves_value() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let uid = seed_user(&conn, "bob");
+        let project = create_project(
+            &conn,
+            &CreateProject {
+                name: "Keep".into(),
+                identifier: "KEP".into(),
+                description: String::new(),
+                emoji: Some("🎯".into()),
+                lead_user_id: Some(uid),
+            },
+        )
+        .unwrap();
+
+        // Update unrelated field; emoji + lead should survive.
+        let updated = update_project(
+            &conn,
+            project.id,
+            &UpdateProject {
+                name: Some("Keep Renamed".into()),
+                identifier: None,
+                description: None,
+                emoji: None, // absent — preserve
+                lead_user_id: None, // absent — preserve
+            },
+        )
+        .unwrap();
+        assert_eq!(updated.name, "Keep Renamed");
+        assert_eq!(updated.emoji.as_deref(), Some("🎯"));
+        assert_eq!(updated.lead_user_id, Some(uid));
+    }
+
+    #[test]
+    fn update_lead_to_nonexistent_user_fails_with_bad_request() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let project = create_project(
+            &conn,
+            &CreateProject {
+                name: "Orphan".into(),
+                identifier: "ORP".into(),
+                description: String::new(),
+                emoji: None,
+                lead_user_id: None,
+            },
+        )
+        .unwrap();
+
+        // 99999 doesn't exist. Should be a BadRequest, not a Database error.
+        let result = update_project(
+            &conn,
+            project.id,
+            &UpdateProject {
+                name: None,
+                identifier: None,
+                description: None,
+                emoji: None,
+                lead_user_id: Some(Some(99999)),
+            },
+        );
+        match result {
+            Err(LificError::BadRequest(msg)) => {
+                assert!(msg.contains("99999"), "got: {msg}");
+                assert!(msg.contains("not found"), "got: {msg}");
+            }
+            other => panic!("expected BadRequest, got: {other:?}"),
+        }
+
+        // And the project should be unchanged (savepoint rolled back).
+        let fetched = get_project(&conn, project.id).unwrap();
+        assert_eq!(fetched.lead_user_id, None);
     }
 }
