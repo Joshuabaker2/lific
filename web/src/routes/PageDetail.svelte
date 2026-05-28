@@ -15,6 +15,18 @@
   import EditableMarkdown from "../lib/EditableMarkdown.svelte";
   import ModeToggle from "../lib/ModeToggle.svelte";
   import { ArrowLeft, Download, Ellipsis, Trash2, Plus, X, Check } from "lucide-svelte";
+  import { getContext } from "svelte";
+
+  // Register our toolbar with Layout's chrome topbar slot. Same pattern
+  // IssueList/Board uses — keeps the chrome L visually seamless.
+  const topbarCtx = getContext<{
+    set: (s: import("svelte").Snippet | undefined) => void;
+  } | undefined>("lific:topbar");
+
+  $effect(() => {
+    topbarCtx?.set(topbarContent);
+    return () => topbarCtx?.set(undefined);
+  });
 
   let {
     navigate,
@@ -241,138 +253,6 @@
   </div>
 {:else if page}
   <div class="h-full flex flex-col">
-    <!-- Top bar -->
-    <div
-      class="shrink-0 flex items-center gap-3 px-6 py-2.5
-             border-b border-[var(--border)] bg-[var(--surface)]"
-    >
-      <button
-        class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]
-               hover:text-[var(--text)] transition-colors rounded px-1.5 py-0.5
-               hover:bg-[var(--bg-subtle)]"
-        onclick={() => navigate(`/${projectIdentifier}/pages`)}
-      >
-        <ArrowLeft size={14} />
-        Pages
-      </button>
-
-      <span class="text-[var(--text-faint)]">/</span>
-      <span class="text-[0.8125rem] font-mono text-[var(--text-muted)]">
-        {page.identifier}
-      </span>
-
-      <!-- Save indicator + menu -->
-      <div class="ml-auto flex items-center gap-2">
-        {#if exportError}
-          <span class="text-[0.75rem] text-[var(--error)]">{exportError}</span>
-        {/if}
-        <button
-          class="inline-flex items-center gap-1.5 text-[0.75rem] text-[var(--text-muted)]
-                 hover:text-[var(--text)] transition-colors rounded px-2 py-1
-                 hover:bg-[var(--bg-subtle)]"
-          onclick={exportMarkdown}
-          disabled={exporting}
-        >
-          <Download size={13} />
-          {exporting ? "Exporting..." : "Export markdown"}
-        </button>
-        <span class="text-[0.75rem] text-[var(--text-faint)]">
-          {#if saving}
-            <span class="animate-pulse">Saving...</span>
-          {:else if lastSaved}
-            Saved at {lastSaved}
-          {/if}
-        </span>
-
-        {#if editable && page && page.content.trim()}
-          <!-- LIF-109: compact segmented mode toggle in the toolbar.
-               Mirrors the larger floating segmented control rendered
-               by EditableMarkdown; both surfaces drive the same
-               `bodyRef.setMode(...)` so the sliding indicator stays
-               in lockstep across them. -->
-          <ModeToggle
-            mode={bodyMode}
-            size="sm"
-            disabled={saving}
-            onSelect={(next) => bodyRef?.setMode(next)}
-          />
-        {/if}
-
-        {#if editable}
-          <div class="relative">
-            <button
-              class="size-7 flex items-center justify-center rounded-md
-                     text-[var(--text-faint)] hover:text-[var(--text)]
-                     hover:bg-[var(--bg-subtle)] transition-colors"
-              onclick={(e) => {
-                e.stopPropagation();
-                if (confirmingDelete) { confirmingDelete = false; menuOpen = false; }
-                else { menuOpen = !menuOpen; }
-              }}
-            >
-              <Ellipsis size={14} />
-            </button>
-
-            {#if menuOpen && !confirmingDelete}
-              <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-              <div
-                class="absolute right-0 top-full mt-1 z-20 w-[180px]
-                       bg-[var(--surface)] border border-[var(--border)]
-                       rounded-md shadow-lg py-1"
-                onclick={(e) => e.stopPropagation()}
-              >
-                <button
-                  class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                         text-[0.8125rem] text-[var(--error)]
-                         hover:bg-[var(--error-bg)] transition-colors"
-                  onclick={() => { confirmingDelete = true; }}
-                >
-                  <Trash2 size={14} />
-                  Delete page
-                </button>
-              </div>
-            {/if}
-
-            {#if confirmingDelete}
-              <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-              <div
-                class="absolute right-0 top-full mt-1 z-20 w-[240px]
-                       bg-[var(--surface)] border border-[var(--border)]
-                       rounded-md shadow-lg p-3"
-                onclick={(e) => e.stopPropagation()}
-              >
-                <p class="text-[0.8125rem] text-[var(--text)] mb-1 font-medium">
-                  Delete {page.identifier}?
-                </p>
-                <p class="text-[0.75rem] text-[var(--text-muted)] mb-3">
-                  This can't be undone.
-                </p>
-                <div class="flex items-center gap-2">
-                  <button
-                    class="text-[0.8125rem] font-medium text-white
-                           bg-[var(--error)] px-3 py-1.5 rounded-md
-                           hover:opacity-90 transition-opacity
-                           disabled:opacity-50"
-                    disabled={deleting}
-                    onclick={confirmDelete}
-                  >
-                    {deleting ? "Deleting..." : "Delete"}
-                  </button>
-                  <button
-                    class="text-[0.8125rem] text-[var(--text-muted)] px-3 py-1.5
-                           rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
-                    onclick={() => { confirmingDelete = false; menuOpen = false; }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            {/if}
-          </div>
-        {/if}
-      </div>
-    </div>
-
     <!-- Content -->
     <div class="flex-1 overflow-y-auto">
       <div class="px-10 py-8">
@@ -549,3 +429,140 @@
     </div>
   </div>
 {/if}
+
+<!--
+  Chrome topbar contents. Registered via context against Layout's
+  topbar slot so it sits in the --chrome zone (continuous with the
+  sidebar) rather than as a banded strip inside the recessed content
+  panel. Mirrors the IssueList / Board layout for consistency.
+-->
+{#snippet topbarContent()}
+  {#if page}
+    <div class="flex items-center gap-3 px-6 py-2 w-full">
+      <!-- Left zone: scope -->
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button
+          class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]
+                 hover:text-[var(--text)] transition-colors rounded px-1.5 py-0.5
+                 hover:bg-[var(--bg-subtle)]"
+          onclick={() => navigate(`/${projectIdentifier}/pages`)}
+        >
+          <ArrowLeft size={14} />
+          Pages
+        </button>
+        <span class="text-[var(--text-faint)]">/</span>
+        <span class="text-[0.8125rem] font-mono text-[var(--text-muted)]">
+          {page.identifier}
+        </span>
+      </div>
+
+      <!-- Right zone: mode toggle + save indicator + export + menu -->
+      <div class="ml-auto flex items-center gap-2 shrink-0">
+        {#if exportError}
+          <span class="text-[0.75rem] text-[var(--error)]">{exportError}</span>
+        {/if}
+
+        {#if editable && page.content.trim()}
+          <ModeToggle
+            mode={bodyMode}
+            size="sm"
+            disabled={saving}
+            onSelect={(next) => bodyRef?.setMode(next)}
+          />
+        {/if}
+
+        <span class="text-[0.75rem] text-[var(--text-faint)] min-w-[5rem] text-right">
+          {#if saving}
+            <span class="animate-pulse">Saving...</span>
+          {:else if lastSaved}
+            Saved at {lastSaved}
+          {/if}
+        </span>
+
+        <button
+          class="inline-flex items-center gap-1.5 text-[0.75rem] text-[var(--text-muted)]
+                 hover:text-[var(--text)] transition-colors rounded px-2 py-1
+                 hover:bg-[var(--bg-subtle)]"
+          onclick={exportMarkdown}
+          disabled={exporting}
+        >
+          <Download size={13} />
+          {exporting ? "Exporting..." : "Export"}
+        </button>
+
+        {#if editable}
+          <div class="relative">
+            <button
+              class="size-7 flex items-center justify-center rounded-md
+                     text-[var(--text-faint)] hover:text-[var(--text)]
+                     hover:bg-[var(--bg-subtle)] transition-colors"
+              onclick={(e) => {
+                e.stopPropagation();
+                if (confirmingDelete) { confirmingDelete = false; menuOpen = false; }
+                else { menuOpen = !menuOpen; }
+              }}
+            >
+              <Ellipsis size={14} />
+            </button>
+
+            {#if menuOpen && !confirmingDelete}
+              <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+              <div
+                class="absolute right-0 top-full mt-1.5 z-30 w-[180px]
+                       bg-[var(--surface)] border border-[var(--border)]
+                       rounded-md shadow-lg py-1"
+                onclick={(e) => e.stopPropagation()}
+              >
+                <button
+                  class="w-full flex items-center gap-2 px-3 py-1.5 text-left
+                         text-[0.8125rem] text-[var(--error)]
+                         hover:bg-[var(--error-bg)] transition-colors"
+                  onclick={() => { confirmingDelete = true; }}
+                >
+                  <Trash2 size={14} />
+                  Delete page
+                </button>
+              </div>
+            {/if}
+
+            {#if confirmingDelete}
+              <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+              <div
+                class="absolute right-0 top-full mt-1.5 z-30 w-[240px]
+                       bg-[var(--surface)] border border-[var(--border)]
+                       rounded-md shadow-lg p-3"
+                onclick={(e) => e.stopPropagation()}
+              >
+                <p class="text-[0.8125rem] text-[var(--text)] mb-1 font-medium">
+                  Delete {page.identifier}?
+                </p>
+                <p class="text-[0.75rem] text-[var(--text-muted)] mb-3">
+                  This can't be undone.
+                </p>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="text-[0.8125rem] font-medium text-white
+                           bg-[var(--error)] px-3 py-1.5 rounded-md
+                           hover:opacity-90 transition-opacity
+                           disabled:opacity-50"
+                    disabled={deleting}
+                    onclick={confirmDelete}
+                  >
+                    {deleting ? "Deleting..." : "Delete"}
+                  </button>
+                  <button
+                    class="text-[0.8125rem] text-[var(--text-muted)] px-3 py-1.5
+                           rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+                    onclick={() => { confirmingDelete = false; menuOpen = false; }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+{/snippet}

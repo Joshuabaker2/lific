@@ -22,6 +22,19 @@
     Circle, CircleDot, CircleDashed, CircleCheckBig,
     Download,
   } from "lucide-svelte";
+  import { getContext } from "svelte";
+
+  // Register our toolbar with Layout's chrome topbar slot. Same pattern
+  // IssueList/Board uses — keeps the chrome L visually seamless across
+  // list → detail transitions.
+  const topbarCtx = getContext<{
+    set: (s: import("svelte").Snippet | undefined) => void;
+  } | undefined>("lific:topbar");
+
+  $effect(() => {
+    topbarCtx?.set(topbarContent);
+    return () => topbarCtx?.set(undefined);
+  });
 
   function statusCssColor(s: string): string {
     switch (s) {
@@ -375,64 +388,6 @@
   </div>
 {:else if issue}
   <div class="h-full flex flex-col">
-    <!-- Top bar -->
-    <div
-      class="shrink-0 flex items-center gap-3 px-6 py-2.5
-             border-b border-[var(--border)] bg-[var(--surface)]"
-    >
-      <button
-        class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]
-               hover:text-[var(--text)] transition-colors rounded px-1.5 py-0.5
-               hover:bg-[var(--bg-subtle)]"
-        onclick={() => navigate(backRoute())}
-      >
-        <ArrowLeft size={14} />
-        {backLabel()}
-      </button>
-
-      <span class="text-[var(--text-faint)]">/</span>
-
-      <span class="text-[0.8125rem] font-mono text-[var(--text-muted)]">
-        {issue.identifier}
-      </span>
-
-      <div class="ml-auto flex items-center gap-3">
-        {#if exportError}
-          <span class="text-[0.75rem] text-[var(--error)]">{exportError}</span>
-        {/if}
-        <button
-          class="inline-flex items-center gap-1.5 text-[0.75rem] text-[var(--text-muted)]
-                 hover:text-[var(--text)] transition-colors rounded px-2 py-1
-                 hover:bg-[var(--bg-subtle)]"
-          onclick={exportMarkdown}
-          disabled={exporting}
-        >
-          <Download size={13} />
-          {exporting ? "Exporting..." : "Export markdown"}
-        </button>
-        <div class="text-[0.75rem] text-[var(--text-faint)]">
-          {#if saving}
-            <span class="animate-pulse">Saving...</span>
-          {:else if lastSaved}
-            Saved at {lastSaved}
-          {/if}
-        </div>
-
-        {#if editable && issue && issue.description.trim()}
-          <!-- LIF-109: compact segmented mode toggle. Both labels are
-               visible at once with a sliding indicator pill; matches
-               the larger floating segmented control rendered by
-               EditableMarkdown so the two surfaces stay in lockstep. -->
-          <ModeToggle
-            mode={descriptionMode}
-            size="sm"
-            disabled={saving}
-            onSelect={(next) => descriptionRef?.setMode(next)}
-          />
-        {/if}
-      </div>
-    </div>
-
     <!-- Content -->
     <div class="flex-1 overflow-y-auto">
       <div class="max-w-[1120px] mx-auto flex gap-0 min-h-full">
@@ -911,6 +866,70 @@
     <CircleDashed {size} style="color: {statusCssColor(status)}" />
   {:else}
     <Circle {size} style="color: {statusCssColor(status)}" />
+  {/if}
+{/snippet}
+
+<!--
+  Chrome topbar contents. Registered via context against Layout's
+  topbar slot so it sits in the --chrome zone (continuous with the
+  sidebar) rather than as a banded strip inside the recessed content
+  panel. Mirrors the IssueList / Board layout for consistency.
+-->
+{#snippet topbarContent()}
+  {#if issue}
+    <div class="flex items-center gap-3 px-6 py-2 w-full">
+      <!-- Left zone: scope -->
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button
+          class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]
+                 hover:text-[var(--text)] transition-colors rounded px-1.5 py-0.5
+                 hover:bg-[var(--bg-subtle)]"
+          onclick={() => navigate(backRoute())}
+        >
+          <ArrowLeft size={14} />
+          {backLabel()}
+        </button>
+        <span class="text-[var(--text-faint)]">/</span>
+        <span class="text-[0.8125rem] font-mono text-[var(--text-muted)]">
+          {issue.identifier}
+        </span>
+      </div>
+
+      <!-- Right zone: mode toggle + save indicator + export -->
+      <div class="ml-auto flex items-center gap-2 shrink-0">
+        {#if exportError}
+          <span class="text-[0.75rem] text-[var(--error)]">{exportError}</span>
+        {/if}
+
+        {#if editable && issue.description.trim()}
+          <ModeToggle
+            mode={descriptionMode}
+            size="sm"
+            disabled={saving}
+            onSelect={(next) => descriptionRef?.setMode(next)}
+          />
+        {/if}
+
+        <span class="text-[0.75rem] text-[var(--text-faint)] min-w-[5rem] text-right">
+          {#if saving}
+            <span class="animate-pulse">Saving...</span>
+          {:else if lastSaved}
+            Saved at {lastSaved}
+          {/if}
+        </span>
+
+        <button
+          class="inline-flex items-center gap-1.5 text-[0.75rem] text-[var(--text-muted)]
+                 hover:text-[var(--text)] transition-colors rounded px-2 py-1
+                 hover:bg-[var(--bg-subtle)]"
+          onclick={exportMarkdown}
+          disabled={exporting}
+        >
+          <Download size={13} />
+          {exporting ? "Exporting..." : "Export"}
+        </button>
+      </div>
+    </div>
   {/if}
 {/snippet}
 

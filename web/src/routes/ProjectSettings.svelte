@@ -9,6 +9,18 @@
   } from "../lib/api";
   import ProjectForm from "../lib/ProjectForm.svelte";
   import { ChevronRight, Download } from "lucide-svelte";
+  import { getContext } from "svelte";
+
+  // Register our toolbar with Layout's chrome topbar slot. Keeps the L
+  // visually continuous with the sidebar instead of banding the chrome.
+  const topbarCtx = getContext<{
+    set: (s: import("svelte").Snippet | undefined) => void;
+  } | undefined>("lific:topbar");
+
+  $effect(() => {
+    topbarCtx?.set(topbarContent);
+    return () => topbarCtx?.set(undefined);
+  });
 
   let {
     navigate,
@@ -167,64 +179,6 @@
   </div>
 {:else}
   <div class="h-full flex flex-col">
-    <!-- Toolbar -->
-    <div
-      class="shrink-0 flex items-center gap-3 px-6 py-2.5
-             border-b border-[var(--border)] bg-[var(--surface)]"
-    >
-      <!-- Breadcrumb -->
-      <div class="flex items-center gap-1.5 shrink-0">
-        <button
-          class="text-[0.8125rem] font-mono font-medium text-[var(--text-muted)]
-                 hover:text-[var(--text)] transition-colors"
-          onclick={() => navigate(`/${project!.identifier}/issues`)}
-        >
-          {project!.identifier}
-        </button>
-        <ChevronRight size={12} class="text-[var(--text-faint)]" />
-        <span class="text-[0.8125rem] font-medium text-[var(--text)]">
-          Settings
-        </span>
-      </div>
-
-      <div class="ml-auto flex items-center gap-2">
-        {#if exportError}
-          <span class="text-[0.8125rem] text-[var(--error)] max-w-[min(280px,40vw)] truncate" title={exportError}>
-            {exportError}
-          </span>
-        {/if}
-        {#if error}
-          <span class="text-[0.8125rem] text-[var(--error)] max-w-[min(280px,40vw)] truncate" title={error}>
-            {error}
-          </span>
-        {/if}
-        {#if saveSuccess}
-          <span class="text-[0.8125rem] text-[var(--success)]">Saved</span>
-        {/if}
-        <button
-          class="inline-flex items-center gap-1.5 text-[0.8125rem] font-medium
-                 text-[var(--text-muted)] px-3 py-1 rounded-md
-                 hover:bg-[var(--bg-subtle)] hover:text-[var(--text)] transition-colors
-                 disabled:opacity-40 disabled:cursor-not-allowed"
-          onclick={exportProject}
-          disabled={exporting}
-        >
-          <Download size={14} />
-          {exporting ? "Exporting..." : "Export markdown"}
-        </button>
-        <button
-          class="text-[0.8125rem] font-medium text-[var(--accent-text)]
-                 bg-[var(--accent)] px-3 py-1 rounded-md
-                 hover:bg-[var(--accent-hover)] transition-colors
-                 disabled:opacity-40 disabled:cursor-not-allowed"
-          disabled={!hasChanges || saving}
-          onclick={saveChanges}
-        >
-          {saving ? "Saving..." : "Save changes"}
-        </button>
-      </div>
-    </div>
-
     <!-- Content -->
     <div class="flex-1 overflow-y-auto">
       <ProjectForm
@@ -311,3 +265,60 @@
     </div>
   </div>
 {/if}
+
+{#snippet topbarContent()}
+  {#if project}
+    <div class="flex items-center gap-3 px-6 py-2 w-full">
+      <!-- Breadcrumb -->
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button
+          class="text-[0.8125rem] font-mono font-medium text-[var(--text-muted)]
+                 hover:text-[var(--text)] transition-colors"
+          onclick={() => navigate(`/${project!.identifier}/issues`)}
+        >
+          {project.identifier}
+        </button>
+        <ChevronRight size={12} class="text-[var(--text-faint)]" />
+        <span class="text-[0.8125rem] font-medium text-[var(--text)]">
+          Settings
+        </span>
+      </div>
+
+      <div class="ml-auto flex items-center gap-2 shrink-0">
+        {#if exportError}
+          <span class="text-[0.8125rem] text-[var(--error)] max-w-[min(280px,30vw)] truncate" title={exportError}>
+            {exportError}
+          </span>
+        {/if}
+        {#if error}
+          <span class="text-[0.8125rem] text-[var(--error)] max-w-[min(280px,30vw)] truncate" title={error}>
+            {error}
+          </span>
+        {/if}
+        {#if saveSuccess}
+          <span class="text-[0.8125rem] text-[var(--success)]">Saved</span>
+        {/if}
+        <button
+          class="inline-flex items-center gap-1.5 text-[0.75rem] text-[var(--text-muted)]
+                 hover:text-[var(--text)] transition-colors rounded px-2 py-1
+                 hover:bg-[var(--bg-subtle)]"
+          onclick={exportProject}
+          disabled={exporting}
+        >
+          <Download size={13} />
+          {exporting ? "Exporting..." : "Export"}
+        </button>
+        <button
+          class="text-[0.8125rem] font-medium text-[var(--accent-text)]
+                 bg-[var(--accent)] px-2.5 py-1 rounded-md
+                 hover:bg-[var(--accent-hover)] transition-colors
+                 disabled:opacity-40 disabled:cursor-not-allowed"
+          disabled={!hasChanges || saving}
+          onclick={saveChanges}
+        >
+          {saving ? "Saving..." : "Save changes"}
+        </button>
+      </div>
+    </div>
+  {/if}
+{/snippet}

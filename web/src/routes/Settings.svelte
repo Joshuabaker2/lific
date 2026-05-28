@@ -10,8 +10,22 @@
     type Bot,
     type ToolTemplate,
   } from "../lib/api";
+  import { getContext } from "svelte";
 
   let { navigate }: { navigate: (path: string) => void } = $props();
+
+  // Register topbar with Layout's chrome slot so the workspace-level
+  // Settings page has a chrome breadcrumb matching every other route.
+  // Previously this surface was bare — chrome ended at the sidebar
+  // edge and content jumped straight into the recessed panel.
+  const topbarCtx = getContext<{
+    set: (s: import("svelte").Snippet | undefined) => void;
+  } | undefined>("lific:topbar");
+
+  $effect(() => {
+    topbarCtx?.set(topbarContent);
+    return () => topbarCtx?.set(undefined);
+  });
 
   let user = $state<AuthUser | null>(null);
   let bots = $state<Bot[]>([]);
@@ -118,6 +132,16 @@
     return !!bot && !bot.has_active_key;
   }
 </script>
+
+{#snippet topbarContent()}
+  <div class="flex items-center gap-3 px-6 py-2 w-full">
+    <div class="flex items-center gap-1.5 shrink-0">
+      <span class="text-[0.8125rem] font-medium text-[var(--text)]">
+        Settings
+      </span>
+    </div>
+  </div>
+{/snippet}
 
 <div class="flex-1 flex justify-center px-6 py-10 md:py-16">
   {#if loading}

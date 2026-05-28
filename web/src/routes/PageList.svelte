@@ -26,6 +26,19 @@
   import Select from "../lib/Select.svelte";
   import Tooltip from "../lib/Tooltip.svelte";
   import { fuzzyMatch, buildSnippet } from "../lib/fuzzy";
+  import { getContext } from "svelte";
+
+  // Register the toolbar with Layout's chrome topbar slot so it sits in
+  // the same --chrome zone as the sidebar instead of as a banded strip
+  // inside the recessed content panel.
+  const topbarCtx = getContext<{
+    set: (s: import("svelte").Snippet | undefined) => void;
+  } | undefined>("lific:topbar");
+
+  $effect(() => {
+    topbarCtx?.set(topbarContent);
+    return () => topbarCtx?.set(undefined);
+  });
 
   // LIF-118: fuzzy search tuning constants.
   //
@@ -341,12 +354,8 @@
   }
 </script>
 
-<div class="h-full flex flex-col">
-  <!-- Toolbar -->
-  <div
-    class="shrink-0 flex items-center gap-3 px-6 py-2.5
-           border-b border-[var(--border)] bg-[var(--surface)]"
-  >
+{#snippet topbarContent()}
+  <div class="flex items-center gap-3 px-6 py-2 w-full">
     <!-- Breadcrumb: Project > Pages -->
     <div class="flex items-center gap-1.5 shrink-0">
       <button
@@ -362,8 +371,8 @@
       </span>
       {#if !loading}
         <span
-          class="text-[0.6875rem] text-[var(--text-faint)] bg-[var(--bg-subtle)]
-                 px-1.5 py-0.5 rounded-full font-medium tabular-nums"
+          class="ml-1 text-[0.6875rem] text-[var(--text-faint)] font-medium
+                 tabular-nums"
         >
           {pages.length}
         </span>
@@ -371,11 +380,9 @@
     </div>
 
     <!-- LIF-105: label filter. Only shown when the project has labels
-         defined — keeps the toolbar clean for label-less projects. The
-         Select component is the same one IssueList's filter uses so the
-         visual vocabulary stays consistent. -->
+         defined — keeps the toolbar clean for label-less projects. -->
     {#if labels.length > 0}
-      <div class="ml-3 flex items-center gap-1.5">
+      <div class="flex items-center gap-1.5">
         <Select
           options={labelOptions}
           bind:value={filterLabel}
@@ -418,53 +425,54 @@
       </div>
     {/if}
 
-    <!-- Spacer -->
-    <div class="flex-1"></div>
-
-    <!-- LIF-117: search. Collapsed-to-icon, expands inline on click. -->
-    {#if searchExpanded}
-      <div class="relative shrink-0">
-        <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-faint)]">
-          <Search size={12} />
+    <!-- Right zone: search + create actions -->
+    <div class="ml-auto flex items-center gap-1.5 shrink-0">
+      <!-- LIF-117: search. Collapsed-to-icon, expands inline on click. -->
+      {#if searchExpanded}
+        <div class="relative">
+          <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-faint)]">
+            <Search size={12} />
+          </div>
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            type="text"
+            placeholder="Search pages..."
+            bind:this={searchInputEl}
+            bind:value={searchQuery}
+            onblur={maybeCollapseSearch}
+            onkeydown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                searchQuery = "";
+                searchExpanded = false;
+                (e.currentTarget as HTMLInputElement).blur();
+              }
+            }}
+            class="w-[200px] pl-7 pr-2 py-1 text-[0.8125rem] rounded-md
+                   border border-[var(--border)] bg-[var(--surface)]
+                   text-[var(--text)] placeholder:text-[var(--text-faint)]
+                   focus:border-[var(--accent)]
+                   focus:shadow-[0_0_0_3px_var(--accent-subtle)]
+                   outline-none transition-colors"
+          />
         </div>
-        <!-- svelte-ignore a11y_autofocus -->
-        <input
-          type="text"
-          placeholder="Search pages..."
-          bind:this={searchInputEl}
-          bind:value={searchQuery}
-          onblur={maybeCollapseSearch}
-          onkeydown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              searchQuery = "";
-              searchExpanded = false;
-              (e.currentTarget as HTMLInputElement).blur();
-            }
-          }}
-          class="w-[200px] pl-7 pr-2 py-1 text-[0.8125rem] rounded-md
-                 border border-[var(--border)] bg-[var(--surface)]
-                 text-[var(--text)] placeholder:text-[var(--text-faint)]
-                 focus:border-[var(--accent)]
-                 focus:shadow-[0_0_0_3px_var(--accent-subtle)]
-                 outline-none transition-colors"
-        />
-      </div>
-    {:else}
-      <Tooltip content="Search" placement="bottom">
-        <button
-          class="size-7 flex items-center justify-center rounded-md
-                 text-[var(--text-muted)] hover:text-[var(--text)]
-                 hover:bg-[var(--bg-subtle)] transition-colors shrink-0"
-          onclick={(e) => { e.stopPropagation(); openSearch(); }}
-        >
-          <Search size={14} />
-        </button>
-      </Tooltip>
-    {/if}
+      {:else}
+        <Tooltip content="Search" placement="bottom">
+          <button
+            class="size-7 flex items-center justify-center rounded-md
+                   text-[var(--text-muted)] hover:text-[var(--text)]
+                   hover:bg-[var(--bg-subtle)] transition-colors"
+            onclick={(e) => { e.stopPropagation(); openSearch(); }}
+          >
+            <Search size={14} />
+          </button>
+        </Tooltip>
+      {/if}
 
-    <!-- Actions -->
-    <div class="flex items-center gap-1.5 shrink-0">
+      <!-- Separator -->
+      <div class="w-px h-4 bg-[var(--border)] mx-1.5"></div>
+
+      <!-- Actions -->
       <button
         class="flex items-center gap-1 text-[0.8125rem]
                text-[var(--text-muted)] px-2.5 py-1 rounded-md
@@ -486,7 +494,9 @@
       </button>
     </div>
   </div>
+{/snippet}
 
+<div class="h-full flex flex-col">
   <!-- Content — entire scroll area is the root drop zone -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div

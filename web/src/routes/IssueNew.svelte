@@ -9,6 +9,16 @@
     type Label,
   } from "../lib/api";
   import { ArrowLeft, Plus, X, Check } from "lucide-svelte";
+  import { getContext } from "svelte";
+
+  const topbarCtx = getContext<{
+    set: (s: import("svelte").Snippet | undefined) => void;
+  } | undefined>("lific:topbar");
+
+  $effect(() => {
+    topbarCtx?.set(topbarContent);
+    return () => topbarCtx?.set(undefined);
+  });
 
   let {
     navigate,
@@ -167,51 +177,6 @@
   </div>
 {:else}
   <div class="h-full flex flex-col">
-    <!-- Top bar -->
-    <div
-      class="shrink-0 flex items-center gap-3 px-6 py-2.5
-             border-b border-[var(--border)] bg-[var(--surface)]"
-    >
-      <button
-        class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]
-               hover:text-[var(--text)] transition-colors rounded px-1.5 py-0.5
-               hover:bg-[var(--bg-subtle)]"
-        onclick={discard}
-      >
-        <ArrowLeft size={14} />
-        Issues
-      </button>
-
-      <span class="text-[var(--text-faint)]">/</span>
-
-      <span class="text-[0.8125rem] text-[var(--text-muted)]">
-        New issue
-      </span>
-
-      <div class="ml-auto flex items-center gap-2">
-        {#if error}
-          <span class="text-[0.8125rem] text-[var(--error)]">{error}</span>
-        {/if}
-        <button
-          class="text-[0.8125rem] text-[var(--text-muted)] px-3 py-1.5
-                 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
-          onclick={discard}
-        >
-          Discard
-        </button>
-        <button
-          class="text-[0.8125rem] font-medium text-[var(--accent-text)]
-                 bg-[var(--accent)] px-3 py-1.5 rounded-md
-                 hover:bg-[var(--accent-hover)] transition-colors
-                 disabled:opacity-40 disabled:cursor-not-allowed"
-          disabled={!canSave || saving}
-          onclick={save}
-        >
-          {saving ? "Creating..." : "Create issue"}
-        </button>
-      </div>
-    </div>
-
     <!-- Content -->
     <div class="flex-1 overflow-y-auto">
       <div class="max-w-[960px] mx-auto flex gap-0 min-h-full">
@@ -473,6 +438,49 @@
     </div>
   </div>
 {/if}
+
+{#snippet topbarContent()}
+  <div class="flex items-center gap-3 px-6 py-2 w-full">
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button
+        class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]
+               hover:text-[var(--text)] transition-colors rounded px-1.5 py-0.5
+               hover:bg-[var(--bg-subtle)]"
+        onclick={discard}
+      >
+        <ArrowLeft size={14} />
+        Issues
+      </button>
+      <span class="text-[var(--text-faint)]">/</span>
+      <span class="text-[0.8125rem] text-[var(--text-muted)]">
+        New issue
+      </span>
+    </div>
+
+    <div class="ml-auto flex items-center gap-2 shrink-0">
+      {#if error}
+        <span class="text-[0.8125rem] text-[var(--error)]">{error}</span>
+      {/if}
+      <button
+        class="text-[0.8125rem] text-[var(--text-muted)] px-2.5 py-1
+               rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+        onclick={discard}
+      >
+        Discard
+      </button>
+      <button
+        class="text-[0.8125rem] font-medium text-[var(--accent-text)]
+               bg-[var(--accent)] px-2.5 py-1 rounded-md
+               hover:bg-[var(--accent-hover)] transition-colors
+               disabled:opacity-40 disabled:cursor-not-allowed"
+        disabled={!canSave || saving}
+        onclick={save}
+      >
+        {saving ? "Creating..." : "Create issue"}
+      </button>
+    </div>
+  </div>
+{/snippet}
 
 {#snippet sidebarField(label: string)}
   <p
