@@ -1,10 +1,22 @@
 name: Release
 
+# Triggered by pushing a version tag (e.g. v1.4.0).
+#
+# The tag MUST originate on magi (origin) so the magi→github push mirror
+# replicates it. Do NOT have this workflow create the tag on the github side:
+# the mirror runs `git push --mirror`, which prunes any github ref that isn't
+# on magi. A github-only tag therefore gets deleted on the next mirror sync,
+# and github silently demotes the now-tagless release to a *draft*. That
+# stranded every release v1.2.0–v1.3.1 (LIF-120). Because the tag now comes
+# from magi, the mirror keeps it and the release stays published.
+#
+# Release ritual (see AGENTS.md "Releasing a new version"):
+#   1. bump Cargo.toml, commit, `git push`            (no release yet)
+#   2. `git tag vX.Y.Z && git push origin vX.Y.Z`     (fires this workflow)
 on:
   push:
-    branches: [master]
-    paths:
-      - 'Cargo.toml'
+    tags:
+      - 'v*.*.*'
 
 permissions:
   contents: write
@@ -13,41 +25,28 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  detect:
+  # Fail fast if the tag and Cargo.toml disagree — otherwise we'd ship a
+  # GitHub release named one version while crates.io publishes another.
+  verify:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.check.outputs.version }}
-      tag: ${{ steps.check.outputs.tag }}
-      changed: ${{ steps.check.outputs.changed }}
+      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Detect version change
-        id: check
+      - name: Verify tag matches Cargo.toml version
+        id: v
         run: |
-          CURRENT="$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')"
-          PREVIOUS="$(git show HEAD~1:Cargo.toml 2>/dev/null | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/' || echo '')"
-          TAG="v${CURRENT}"
-
-          echo "version=${CURRENT}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
-          if [ "$CURRENT" = "$PREVIOUS" ]; then
-            echo "Version unchanged ($CURRENT), skipping release"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          elif git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists, skipping release"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Version changed: ${PREVIOUS:-none} -> ${CURRENT}"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CARGO_VERSION="$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')"
+          echo "tag=${GITHUB_REF_NAME} (version ${TAG_VERSION}), Cargo.toml=${CARGO_VERSION}"
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${CARGO_VERSION}. Bump Cargo.toml to ${TAG_VERSION} (or tag the right commit) before releasing."
+            exit 1
           fi
+          echo "version=${CARGO_VERSION}" >> "$GITHUB_OUTPUT"
 
   test:
-    needs: detect
-    if: needs.detect.outputs.changed == 'true'
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,8 +57,7 @@ jobs:
       - run: cargo test
 
   build:
-    needs: [detect, test]
-    if: needs.detect.outputs.changed == 'true'
+    needs: [verify, test]
     strategy:
       matrix:
         include:
@@ -117,18 +115,10 @@ jobs:
           path: ${{ matrix.name }}
 
   release:
-    needs: [detect, build]
-    if: needs.detect.outputs.changed == 'true'
+    needs: [verify, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Create tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ needs.detect.outputs.tag }}" -m "Release ${{ needs.detect.outputs.tag }}"
-          git push origin "${{ needs.detect.outputs.tag }}"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -142,12 +132,14 @@ jobs:
           sha256sum * > sha256sums.txt
           cat sha256sums.txt
 
+      # The tag already exists (it triggered this run); gh attaches the
+      # release to it. We do NOT create or push a tag here — see the header.
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ needs.detect.outputs.tag }}" \
-            --title "${{ needs.detect.outputs.tag }}" \
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
             --generate-notes \
             --latest \
             binaries/lific-linux-x86_64 \
@@ -156,25 +148,19 @@ jobs:
             binaries/lific-macos-aarch64 \
             binaries/sha256sums.txt
 
-      # Work around a gh draft-fallback bug (LIF-120): when `gh release
-      # create` cannot confidently bind the just-pushed tag to the new
-      # release at API-call time (a read-side propagation race), it
-      # silently falls back to creating a *draft*. `--latest` is recorded
-      # but is a no-op until the release is non-draft, so it sits drafted
-      # forever (this stranded v1.2.0 through v1.3.1). Re-asserting the
-      # published state here is idempotent and fixes it regardless of the
-      # underlying gh quirk.
+      # Belt-and-suspenders against gh's occasional draft-fallback at create
+      # time. The real fix for the LIF-120 strandings is the magi-origin tag
+      # above; this just re-asserts the published state and is idempotent.
       - name: Publish release (force non-draft)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release edit "${{ needs.detect.outputs.tag }}" \
+          gh release edit "${GITHUB_REF_NAME}" \
             --draft=false \
             --latest
 
   publish:
-    needs: [detect, release]
-    if: needs.detect.outputs.changed == 'true'
+    needs: [verify, release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
