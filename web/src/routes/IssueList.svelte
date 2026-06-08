@@ -287,6 +287,9 @@
 
   function autoRefreshBusy(): boolean {
     return (
+      // A mount/navigation load is already in flight — don't stack another
+      // full fetch on top of it (matters a lot on a high-latency link).
+      loading ||
       dragActive ||
       mutationsInFlight > 0 ||
       sortOpen ||

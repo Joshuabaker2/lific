@@ -265,6 +265,7 @@
   // and reconcile on the next mount/navigation).
   function autoRefreshBusy(): boolean {
     return (
+      loading ||
       draggedId !== null ||
       createTarget !== null ||
       (searchExpanded && document.activeElement === searchInputEl)

@@ -69,6 +69,12 @@
   let exportError = $state("");
   let exporting = $state(false);
 
+  // Request-generation guard. Bumped on every navigation (pageId change);
+  // any load/refresh started under an older generation discards its result
+  // so a slow response can't stomp a newer page's data. This is what kills
+  // the "switching pages loads the wrong/old page" race.
+  let loadGen = 0;
+
   $effect(() => {
     const id = pageId;
     lastSaved = null;
@@ -84,42 +90,51 @@
   // `bodyMode` is bound up from DocumentDetail's EditableMarkdown.
   let bodyMode = $state<"read" | "edit">("read");
 
+  // Refresh the page *currently routed to* (pageId), not whatever `page`
+  // happens to hold — and drop the result if navigation moved on while
+  // the request was in flight.
   async function refreshPage() {
-    if (!page) return;
-    const res = await getPage(page.id);
+    const gen = loadGen;
+    const res = await getPage(pageId);
+    if (gen !== loadGen) return; // navigated away mid-flight — discard
     if (res.ok) page = res.data;
   }
 
   $effect(() =>
     startAutoRefresh({
       refresh: refreshPage,
-      isBusy: () => bodyMode === "edit" || saving,
+      // Also skip while a navigation load is running (loading) so a focus
+      // event can't fire a redundant fetch on top of the mount load.
+      isBusy: () => bodyMode === "edit" || saving || loading,
       // Focus-only — no background interval for the page editor.
       intervalMs: 0,
     }),
   );
 
   async function loadPage(id: number) {
+    const gen = ++loadGen;
     loading = true;
     error = "";
     comments = [];
     labels = [];
     const res = await getPage(id);
+    if (gen !== loadGen) return; // a newer navigation superseded this load
     if (!res.ok) { error = res.error; loading = false; return; }
     page = res.data;
 
     // Load page comments and (project) labels in parallel. Workspace
     // pages skip the labels fetch — they can't carry any (LIF-105).
     const tasks: Promise<unknown>[] = [
-      listPageComments(page.id).then((r) => { if (r.ok) comments = r.data; }),
+      listPageComments(page.id).then((r) => { if (gen === loadGen && r.ok) comments = r.data; }),
     ];
     if (page.project_id !== null) {
       tasks.push(
-        listLabels(page.project_id).then((r) => { if (r.ok) labels = r.data; }),
+        listLabels(page.project_id).then((r) => { if (gen === loadGen && r.ok) labels = r.data; }),
       );
     }
     await Promise.all(tasks);
 
+    if (gen !== loadGen) return;
     loading = false;
   }
 
