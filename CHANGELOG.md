@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.4.1 (2026-06-09)
+
+A maintenance release: a sweep of correctness and security fixes across the database, auth, and MCP layers, plus server and web improvements that landed after v1.4.0.
+
+### Fixes
+
+- Creating an issue is now atomic — a failed label attach can no longer leave a half-created issue behind.
+- Rotating an API key keeps its user binding, so rotated bot/tool keys no longer lose their comment attribution.
+- Empty or whitespace-only search queries return no results instead of a database error.
+- Project identifiers are validated on create and update: uppercase letters and digits, at most 5 characters, starting with a letter. Hyphenated, lowercase, or empty identifiers (which silently broke issue lookups) and the reserved word `DOC` are rejected.
+- An issue can no longer be linked to itself — a self-"blocks" previously made it permanently unworkable.
+- Board columns follow workflow order (backlog → todo → active → done → cancelled) and priority severity, instead of alphabetical order.
+- Auto-refresh no longer stacks duplicate fetches when navigating between views.
+- OAuth protected-resource metadata advertises the `/mcp`-qualified resource so claude.ai web accepts issued tokens.
+
+### Server and web
+
+- Responses are gzip/brotli compressed and content-hashed assets are cached immutably, dramatically cutting first-load time on slow links.
+- Issue list, board, and page views auto-refresh to reflect changes without a manual reload.
+- Optional authless MCP endpoint at `/mcp/<token>` to work around claude.ai web's broken OAuth connector flow.
+- Priority icons are now consistent across the UI.
+- The root URL lands on Settings instead of the first project's issue list.
+
 ## v1.4.0 (2026-05-28)
 
 The biggest release yet. Pages become first-class documents with comments, labels, lifecycle status, and search. Issues gain fuzzy search and activity-aware sorting. Modules get a real management UI and icons. The markdown renderer learns Mermaid diagrams and code-copy buttons, the commenting experience is rebuilt, and login and OAuth security are meaningfully hardened. (This is the first GitHub release since v1.1.3; the 1.2.x and 1.3.x line shipped on crates.io only.)
