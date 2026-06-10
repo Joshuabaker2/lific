@@ -687,15 +687,17 @@
                 <span class="text-[0.75rem] font-mono text-[var(--text-faint)] shrink-0">
                   {hit.page.identifier}
                 </span>
-                <span
-                  class="flex items-center gap-1 shrink-0 text-[0.6875rem] font-medium
-                         px-1.5 py-0.5 rounded-full border border-[var(--border)]
-                         text-[var(--text-muted)]"
-                  title={hMeta.label}
-                >
-                  <hMeta.icon size={11} class="shrink-0" />
-                  {hMeta.label}
-                </span>
+                {#if hit.page.status !== "active"}
+                  <span
+                    class="flex items-center gap-1 shrink-0 text-[0.6875rem] font-medium
+                           px-1.5 py-0.5 rounded-full border border-[var(--border)]
+                           text-[var(--text-muted)]"
+                    title={hMeta.label}
+                  >
+                    <hMeta.icon size={11} class="shrink-0" />
+                    {hMeta.label}
+                  </span>
+                {/if}
                 {#if hit.page.labels.length > 0}
                   <div class="flex items-center gap-1 shrink-0">
                     {#each hit.page.labels.slice(0, 2) as lbl}
@@ -841,17 +843,20 @@
         {page.title}
       </span>
 
-      <!-- LIF-112: status badge. Icon + label, dimmed for non-active
-           lifecycle stages so the list reads at a glance. -->
-      <span
-        class="flex items-center gap-1 shrink-0 text-[0.6875rem] font-medium
-               px-1.5 py-0.5 rounded-full border border-[var(--border)]
-               text-[var(--text-muted)]"
-        title={sMeta.label}
-      >
-        <sMeta.icon size={11} class="shrink-0" />
-        {sMeta.label}
-      </span>
+      <!-- LIF-112: status badge. Only rendered for non-default lifecycle
+           stages — every row carrying an identical "Active" pill was
+           noise; Draft/Complete/Archived are the actual signals. -->
+      {#if page.status !== "active"}
+        <span
+          class="flex items-center gap-1 shrink-0 text-[0.6875rem] font-medium
+                 px-1.5 py-0.5 rounded-full border border-[var(--border)]
+                 text-[var(--text-muted)]"
+          title={sMeta.label}
+        >
+          <sMeta.icon size={11} class="shrink-0" />
+          {sMeta.label}
+        </span>
+      {/if}
 
       <!-- LIF-105: label chips. Up to 2 then a "+N" overflow, matching
            the IssueList row layout so the visual vocabulary stays
