@@ -453,7 +453,7 @@
           class="ml-1 text-[0.6875rem] text-[var(--text-faint)] font-medium
                  tabular-nums"
         >
-          {pages.length}
+          {visiblePages.length}
         </span>
       {/if}
     </div>
