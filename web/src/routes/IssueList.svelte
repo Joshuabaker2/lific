@@ -24,6 +24,7 @@
   import { flip } from "svelte/animate";
   import { getContext } from "svelte";
   import { fuzzyMatch, buildSnippet } from "../lib/fuzzy";
+  import { formatRelative } from "../lib/format";
   import { startAutoRefresh } from "../lib/autoRefresh.svelte";
 
   // LIF-119: search tuning, kept identical to the page list (LIF-118) so
@@ -851,20 +852,6 @@
     }
   }
 
-  function formatRelativeDate(iso: string): string {
-    const d = new Date(iso + "Z");
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHrs = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHrs < 24) return `${diffHrs}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  }
 </script>
 
 <svelte:window
@@ -1507,7 +1494,7 @@
                         class="text-[0.625rem] text-[var(--text-faint)]
                                tabular-nums"
                       >
-                        {formatRelativeDate(issue.updated_at)}
+                        {formatRelative(issue.updated_at)}
                       </span>
                     </div>
                 </article>
@@ -1843,7 +1830,7 @@
 
     <!-- Updated time -->
     <span class="text-[0.75rem] text-[var(--text-faint)] shrink-0 w-[60px] text-right">
-      {formatRelativeDate(issue.updated_at)}
+      {formatRelative(issue.updated_at)}
     </span>
   </div>
 {/snippet}
