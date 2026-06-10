@@ -1488,8 +1488,9 @@
                     {issue.title}
                   </h3>
 
-                  <!-- Bottom: labels + updated time -->
-                  {#if issue.labels.length > 0 || issue.updated_at}
+                  <!-- Bottom: labels + updated time. Always rendered —
+                       updated_at always exists, so the time anchor keeps
+                       card heights consistent whether or not labels do. -->
                     <div
                       class="flex items-center gap-1.5 mt-2 flex-wrap"
                     >
@@ -1520,7 +1521,6 @@
                         {formatRelativeDate(issue.updated_at)}
                       </span>
                     </div>
-                  {/if}
                 </article>
               {/each}
               </div>
