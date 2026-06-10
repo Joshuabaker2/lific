@@ -11,6 +11,7 @@
   import { ArrowLeft } from "lucide-svelte";
   import LabelEditor from "../lib/LabelEditor.svelte";
   import PriorityIcon from "../lib/PriorityIcon.svelte";
+  import StatusIcon from "../lib/StatusIcon.svelte";
   import { getContext } from "svelte";
 
   const topbarCtx = getContext<{
@@ -237,7 +238,7 @@
                     labelsOpen = false;
                   }}
                 >
-                  <span class="size-2.5 rounded-full {statusDotClass(status)}"></span>
+                  <StatusIcon {status} size={14} />
                   <span class="capitalize text-[var(--text)]">{status}</span>
                 </button>
                 {#if statusOpen}
@@ -257,7 +258,7 @@
                           : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
                         onclick={() => { status = s.value; statusOpen = false; }}
                       >
-                        <span class="size-2 rounded-full {statusDotClass(s.value)}"></span>
+                        <StatusIcon status={s.value} size={14} />
                         {s.label}
                       </button>
                     {/each}
@@ -440,17 +441,6 @@
 {/snippet}
 
 <script lang="ts" module>
-  function statusDotClass(s: string): string {
-    switch (s) {
-      case "backlog": return "bg-[var(--text-faint)]";
-      case "todo": return "bg-[var(--text-muted)]";
-      case "active": return "bg-[var(--accent)]";
-      case "done": return "bg-[var(--success)]";
-      case "cancelled": return "bg-[var(--text-faint)]";
-      default: return "bg-[var(--text-faint)]";
-    }
-  }
-
   function priorityTextClass(p: string): string {
     switch (p) {
       case "urgent": return "text-[var(--error)]";

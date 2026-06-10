@@ -26,6 +26,7 @@
   import IconPicker from "../lib/IconPicker.svelte";
   import ProjectIcon from "../lib/ProjectIcon.svelte";
   import PriorityIcon from "../lib/PriorityIcon.svelte";
+  import StatusIcon from "../lib/StatusIcon.svelte";
   import { formatDate } from "../lib/format";
   import {
     ArrowLeft, Plus, ChevronDown,
@@ -405,7 +406,7 @@
                 {#each ISSUE_STATUS_ORDER as s}
                   {#if issueStatusCounts[s] > 0}
                     <span class="flex items-center gap-1">
-                      {@render issueStatusIcon(s, 11)}
+                      <StatusIcon status={s} size={11} />
                       <span class="tabular-nums">{issueStatusCounts[s]}</span>
                     </span>
                   {/if}
@@ -444,7 +445,7 @@
                            transition-colors group"
                     onclick={() => navigate(`/${projectIdentifier}/issues/${issue.identifier}`)}
                   >
-                    {@render issueStatusIcon(issue.status, 14)}
+                    <StatusIcon status={issue.status} size={14} />
                     <span class="text-[0.75rem] font-mono text-[var(--text-faint)] shrink-0 tabular-nums w-[60px]">
                       {issue.identifier}
                     </span>
@@ -553,20 +554,6 @@
     <CircleDashed {size} class="text-[var(--text-faint)]" />
   {:else}
     <Circle {size} class="text-[var(--text-faint)]" />
-  {/if}
-{/snippet}
-
-{#snippet issueStatusIcon(status: string, size: number)}
-  {#if status === "done"}
-    <CircleCheck {size} class="text-[var(--success)] shrink-0" />
-  {:else if status === "cancelled"}
-    <CircleX {size} class="text-[var(--text-faint)] shrink-0" />
-  {:else if status === "active"}
-    <CircleDot {size} class="text-[var(--accent)] shrink-0" />
-  {:else if status === "backlog"}
-    <CircleDashed {size} class="text-[var(--text-faint)] shrink-0" />
-  {:else}
-    <Circle {size} class="text-[var(--text-muted)] shrink-0" />
   {/if}
 {/snippet}
 

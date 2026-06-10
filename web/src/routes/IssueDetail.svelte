@@ -17,22 +17,9 @@
   import LabelEditor from "../lib/LabelEditor.svelte";
   import ProjectIcon from "../lib/ProjectIcon.svelte";
   import PriorityIcon from "../lib/PriorityIcon.svelte";
+  import StatusIcon, { statusCssColor } from "../lib/StatusIcon.svelte";
   import { formatDate } from "../lib/format";
-  import {
-    Circle, CircleDot, CircleDashed, CircleCheckBig, CircleX,
-    ArrowUpRight,
-  } from "lucide-svelte";
-
-  function statusCssColor(s: string): string {
-    switch (s) {
-      case "backlog": return "var(--text-faint)";
-      case "todo": return "var(--text-muted)";
-      case "active": return "var(--accent)";
-      case "done": return "var(--success)";
-      case "cancelled": return "var(--text-faint)";
-      default: return "var(--text-faint)";
-    }
-  }
+  import { ArrowUpRight } from "lucide-svelte";
 
   let {
     navigate,
@@ -283,7 +270,7 @@
     {#if issue}
       <span class="text-[var(--text-faint)]">/</span>
       <span class="flex items-center gap-1.5 text-[0.8125rem]">
-        {@render statusIcon(issue.status, 13)}
+        <StatusIcon status={issue.status} size={13} />
         <span class="capitalize" style="color: {statusCssColor(issue.status)}">
           {issue.status}
         </span>
@@ -310,7 +297,7 @@
                 labelsOpen = false;
               }}
             >
-              {@render statusIcon(issue.status, 14)}
+              <StatusIcon status={issue.status} size={14} />
               <span class="capitalize text-[var(--text)]">{issue.status}</span>
             </button>
             {#if statusOpen}
@@ -331,7 +318,7 @@
                       : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
                     onclick={() => setStatus(s.value)}
                   >
-                    {@render statusIcon(s.value, 14)}
+                    <StatusIcon status={s.value} size={14} />
                     {s.label}
                   </button>
                 {/each}
@@ -560,22 +547,6 @@
 
 {#snippet sidebarField(label: string)}
   <p class="issue-meta-field-label">{label}</p>
-{/snippet}
-
-
-
-{#snippet statusIcon(status: string, size: number)}
-  {#if status === "done"}
-    <CircleCheckBig {size} style="color: {statusCssColor(status)}" />
-  {:else if status === "cancelled"}
-    <CircleX {size} style="color: {statusCssColor(status)}" />
-  {:else if status === "active"}
-    <CircleDot {size} style="color: {statusCssColor(status)}" />
-  {:else if status === "backlog"}
-    <CircleDashed {size} style="color: {statusCssColor(status)}" />
-  {:else}
-    <Circle {size} style="color: {statusCssColor(status)}" />
-  {/if}
 {/snippet}
 
 <script lang="ts" module>

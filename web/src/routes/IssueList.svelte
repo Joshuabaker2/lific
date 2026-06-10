@@ -12,14 +12,14 @@
     type Label,
   } from "../lib/api";
   import {
-    Plus, Search, ChevronRight, CircleCheckBig, CircleX, X,
-    Circle, CircleDot, CircleDashed, Layers, Signal,
+    Plus, Search, ChevronRight, X, Layers, Signal,
     List as ListIcon, LayoutGrid, SlidersHorizontal, HelpCircle,
     ArrowDownUp, ArrowDown, ArrowUp, Hash, Clock, History,
   } from "lucide-svelte";
   import Select from "../lib/Select.svelte";
   import Tooltip from "../lib/Tooltip.svelte";
   import PriorityIcon from "../lib/PriorityIcon.svelte";
+  import StatusIcon from "../lib/StatusIcon.svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import { getContext } from "svelte";
@@ -91,18 +91,6 @@
     { value: "", label: "Module" },
     ...modules.map((m) => ({ value: m.name, label: m.name })),
   ]);
-
-  // CSS variable value for a status — used in both snippets
-  function statusCssColor(s: string): string {
-    switch (s) {
-      case "backlog": return "var(--text-faint)";
-      case "todo": return "var(--text-muted)";
-      case "active": return "var(--accent)";
-      case "done": return "var(--success)";
-      case "cancelled": return "var(--text-faint)";
-      default: return "var(--text-faint)";
-    }
-  }
 
   function priorityCssColor(p: string): string {
     switch (p) {
@@ -966,7 +954,7 @@
         {#snippet renderSelected(opt)}
           <span class="flex items-center gap-1.5 text-[0.8125rem]">
             {#if opt.value}
-              {@render statusIcon(String(opt.value), 13)}
+              <StatusIcon status={String(opt.value)} size={13} />
               <span class="text-[var(--text)] capitalize">{opt.label}</span>
             {:else}
               <span class="text-[var(--text-muted)]">{opt.label}</span>
@@ -976,7 +964,7 @@
         {#snippet renderOption(opt, isSelected)}
           <span class="flex items-center gap-2 text-[0.8125rem] {isSelected ? 'font-medium' : ''}">
             {#if opt.value}
-              {@render statusIcon(String(opt.value), 14)}
+              <StatusIcon status={String(opt.value)} size={14} />
               <span class="{isSelected ? 'text-[var(--accent)]' : 'text-[var(--text)]'} capitalize">{opt.label}</span>
             {:else}
               <span class="text-[var(--text-muted)]">{opt.label}</span>
@@ -1358,7 +1346,7 @@
               aria-pressed={visible}
               onclick={() => toggleStatusVisibility(status)}
             >
-              {@render statusIcon(status, 12)}
+              <StatusIcon status={status} size={12} />
               <span class="capitalize">{status}</span>
               <span
                 class="tabular-nums text-[0.6875rem]
@@ -1400,7 +1388,7 @@
               class="shrink-0 flex items-center gap-2 px-3 py-2.5
                      border-b border-[var(--border)]"
             >
-              {@render statusIcon(status, 14)}
+              <StatusIcon status={status} size={14} />
               <span
                 class="text-[0.75rem] font-semibold uppercase tracking-widest
                        text-[var(--text-muted)]"
@@ -1559,7 +1547,7 @@
             title="Set status"
             onclick={(e) => { e.stopPropagation(); inlineCreateStatusOpen = !inlineCreateStatusOpen; }}
           >
-            {@render statusIcon(inlineCreateStatus, 16)}
+            <StatusIcon status={inlineCreateStatus} size={16} />
           </button>
           {#if inlineCreateStatusOpen}
             <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
@@ -1583,7 +1571,7 @@
                   }}
                   onmouseenter={() => { inlineCreateStatusIdx = si; }}
                 >
-                  {@render statusIcon(s, 14)}
+                  <StatusIcon status={s} size={14} />
                   {s}
                 </button>
               {/each}
@@ -1685,7 +1673,7 @@
                    bg-[var(--surface)] border-b border-[var(--border)]"
           >
             <span class="inline-flex items-center gap-1.5">
-              {@render statusIcon(status, 14)}
+              <StatusIcon status={status} size={14} />
               <span
                 class="text-[0.75rem] font-semibold uppercase tracking-widest
                        text-[var(--text-muted)]"
@@ -1751,7 +1739,7 @@
             }
           }}
         >
-          {@render statusIcon(issue.status, 16)}
+          <StatusIcon status={issue.status} size={16} />
         </button>
       </Tooltip>
       {#if statusDropdownId === issue.id}
@@ -1783,7 +1771,7 @@
               }}
               onmouseenter={() => { inlineCreateStatusIdx = si; }}
             >
-              {@render statusIcon(s, 14)}
+              <StatusIcon status={s} size={14} />
               {s}
             </button>
           {/each}
@@ -1857,20 +1845,6 @@
       {formatRelativeDate(issue.updated_at)}
     </span>
   </div>
-{/snippet}
-
-{#snippet statusIcon(status: string, size: number)}
-  {#if status === "done"}
-    <CircleCheckBig {size} style="color: {statusCssColor(status)}" />
-  {:else if status === "cancelled"}
-    <CircleX {size} style="color: {statusCssColor(status)}" />
-  {:else if status === "active"}
-    <CircleDot {size} style="color: {statusCssColor(status)}" />
-  {:else if status === "backlog"}
-    <CircleDashed {size} style="color: {statusCssColor(status)}" />
-  {:else}
-    <Circle {size} style="color: {statusCssColor(status)}" />
-  {/if}
 {/snippet}
 
 
