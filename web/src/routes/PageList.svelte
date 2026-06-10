@@ -87,8 +87,11 @@
 
   let expandedFolders = $state<Set<number>>(new Set());
 
-  // Drag and drop
-  let draggedId = $state<{ type: "page" | "folder"; id: number } | null>(null);
+  // Drag and drop. Pages only: the API has no endpoint for re-parenting
+  // a folder yet, and the old folder-drag path moved the folder
+  // optimistically, looked successful, then silently reverted on
+  // reload. Until persistence exists, folders aren't draggable.
+  let draggedId = $state<{ type: "page"; id: number } | null>(null);
   let dropTarget = $state<number | "root" | null>(null);
 
   // Inline create
@@ -321,14 +324,6 @@
     }
   }
 
-  function onDragStartFolder(e: DragEvent, folderId: number) {
-    draggedId = { type: "folder", id: folderId };
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", `folder:${folderId}`);
-    }
-  }
-
   function onDragEnd() {
     draggedId = null;
     dropTarget = null;
@@ -336,8 +331,6 @@
 
   function onDragOver(e: DragEvent, target: number | "root") {
     if (!draggedId) return;
-    // Don't allow dropping a folder into itself
-    if (draggedId.type === "folder" && draggedId.id === target) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     // Only update if actually changing target — prevents child element
@@ -352,35 +345,16 @@
     draggedId = null;
     dropTarget = null;
 
-    if (dragged.type === "page") {
-      const page = pages.find((p) => p.id === dragged.id);
-      if (!page || (page.folder_id ?? null) === targetFolderId) return;
-      pages = pages.map((p) =>
-        p.id === dragged.id ? { ...p, folder_id: targetFolderId } : p
-      );
-      await updatePage(page.id, { folder_id: targetFolderId } as Record<string, unknown>);
-    } else {
-      const folder = folders.find((f) => f.id === dragged.id);
-      if (!folder || folder.parent_id === targetFolderId) return;
-      // Prevent circular nesting
-      if (targetFolderId && isDescendant(targetFolderId, dragged.id)) return;
-      folders = folders.map((f) =>
-        f.id === dragged.id ? { ...f, parent_id: targetFolderId } : f
-      );
-      // TODO: persist folder parent change when API supports it
-    }
+    const page = pages.find((p) => p.id === dragged.id);
+    if (!page || (page.folder_id ?? null) === targetFolderId) return;
+    pages = pages.map((p) =>
+      p.id === dragged.id ? { ...p, folder_id: targetFolderId } : p
+    );
+    await updatePage(page.id, { folder_id: targetFolderId } as Record<string, unknown>);
 
     if (targetFolderId && !expandedFolders.has(targetFolderId)) {
       expandedFolders = new Set([...expandedFolders, targetFolderId]);
     }
-  }
-
-  function isDescendant(folderId: number, ancestorId: number): boolean {
-    const folder = folders.find((f) => f.id === folderId);
-    if (!folder) return false;
-    if (folder.parent_id === ancestorId) return true;
-    if (folder.parent_id) return isDescendant(folder.parent_id, ancestorId);
-    return false;
   }
 
   // ── Create ───────────────────────────────────────────
@@ -749,11 +723,9 @@
   {#each subFolders as folder (folder.id)}
     {@const isExpanded = expandedFolders.has(folder.id)}
     {@const isDraggedOver = dropTarget === folder.id}
-    {@const isDragging = draggedId?.type === "folder" && draggedId.id === folder.id}
 
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="{isDragging ? 'opacity-40' : ''}"
       ondragover={(e) => { e.stopPropagation(); onDragOver(e, folder.id); }}
       ondrop={(e) => { e.stopPropagation(); onDrop(e, folder.id); }}
     >
@@ -766,11 +738,8 @@
         style="padding-left: {depth * 20 + 6}px;"
         role="button"
         tabindex="0"
-        draggable="true"
         onclick={() => toggleFolder(folder.id)}
         onkeydown={(e) => { if (e.key === "Enter") toggleFolder(folder.id); }}
-        ondragstart={(e) => onDragStartFolder(e, folder.id)}
-        ondragend={onDragEnd}
       >
         <ChevronRight
           size={14}
