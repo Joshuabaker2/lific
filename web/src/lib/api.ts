@@ -315,6 +315,21 @@ export async function getIssue(id: number) {
   return request<Issue>(`/issues/${id}`);
 }
 
+/** Per-status issue counts for a project (LIF-161). Server-side GROUP BY —
+ *  the list endpoint is limit-capped, so counting its rows undercounts. */
+export interface IssueStatusCounts {
+  backlog: number;
+  todo: number;
+  active: number;
+  done: number;
+  cancelled: number;
+  total: number;
+}
+
+export async function getIssueCounts(projectId: number) {
+  return request<IssueStatusCounts>(`/projects/${projectId}/issue-counts`);
+}
+
 export interface CreateIssueInput {
   project_id: number;
   title: string;

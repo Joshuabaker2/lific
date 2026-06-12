@@ -149,6 +149,11 @@ pub fn router(db: DbPool, cors_origins: &[String]) -> Router {
         .route("/api/search", get(search))
         // Board view
         .route("/api/projects/{id}/board", get(projects::get_board))
+        // Per-status issue counts (topbar tallies — LIF-161)
+        .route(
+            "/api/projects/{id}/issue-counts",
+            get(projects::issue_counts),
+        )
         // Health
         .route("/api/health", get(health))
         .layer(

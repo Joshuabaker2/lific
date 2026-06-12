@@ -60,6 +60,19 @@ pub(super) async fn delete_project_handler(
     Ok(Json(serde_json::json!({"deleted": true})))
 }
 
+/// Per-status issue counts + total for the topbar (LIF-161). Separate from
+/// the list endpoint because that one is limit-capped — counting its rows
+/// client-side silently undercounts past the cap.
+pub(super) async fn issue_counts(
+    State(db): State<DbPool>,
+    Path(project_id): Path<i64>,
+) -> Result<Json<IssueStatusCounts>, LificError> {
+    with_read(&db, |conn| {
+        crate::db::queries::count_issues_by_status(conn, project_id)
+    })
+    .map(Json)
+}
+
 #[derive(serde::Deserialize)]
 pub(super) struct BoardQuery {
     #[serde(default = "default_group_by")]
@@ -261,6 +274,45 @@ mod tests {
         let board: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(board["todo"].as_array().unwrap().len(), 2);
         assert_eq!(board["active"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn issue_counts_returns_per_status_tallies_and_total() {
+        let app = test_app();
+        let (project_id, _) = seed_project(&app).await;
+
+        for (title, status) in [
+            ("A", "todo"),
+            ("B", "active"),
+            ("C", "todo"),
+            ("D", "done"),
+        ] {
+            let body = serde_json::json!({
+                "project_id": project_id,
+                "title": title,
+                "status": status
+            });
+            json_post(&app, "/api/issues", body).await;
+        }
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/projects/{project_id}/issue-counts"))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let counts = parse_json(resp).await;
+        assert_eq!(counts["backlog"], 0);
+        assert_eq!(counts["todo"], 2);
+        assert_eq!(counts["active"], 1);
+        assert_eq!(counts["done"], 1);
+        assert_eq!(counts["cancelled"], 0);
+        assert_eq!(counts["total"], 4);
     }
 
     #[tokio::test]

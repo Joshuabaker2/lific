@@ -295,6 +295,37 @@ pub fn list_issues(conn: &Connection, q: &ListIssuesQuery) -> Result<Vec<Issue>,
     Ok(issues)
 }
 
+/// Per-status issue counts for a project (LIF-161). One indexed GROUP BY
+/// scan — cheap even on large projects, unlike pulling every row (which the
+/// list endpoint caps anyway, so counting client-side undercounts).
+pub fn count_issues_by_status(
+    conn: &Connection,
+    project_id: i64,
+) -> Result<IssueStatusCounts, LificError> {
+    let mut counts = IssueStatusCounts::default();
+    let mut stmt = conn.prepare(
+        "SELECT status, COUNT(*) FROM issues WHERE project_id = ?1 GROUP BY status",
+    )?;
+    let rows = stmt.query_map(params![project_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    for row in rows {
+        let (status, n) = row?;
+        match status.as_str() {
+            "backlog" => counts.backlog = n,
+            "todo" => counts.todo = n,
+            "active" => counts.active = n,
+            "done" => counts.done = n,
+            "cancelled" => counts.cancelled = n,
+            // Unknown statuses can't be created through the API, but a
+            // hand-edited DB row still counts toward the total.
+            _ => {}
+        }
+        counts.total += n;
+    }
+    Ok(counts)
+}
+
 /// Create a new issue with auto-incremented sequence.
 pub fn create_issue(conn: &Connection, input: &CreateIssue) -> Result<Issue, LificError> {
     let next_seq: i64 = conn
@@ -671,6 +702,44 @@ mod tests {
         .unwrap();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].status, "active");
+    }
+
+    #[test]
+    fn count_issues_by_status_tallies_each_bucket_and_total() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let pid = seed_project(&conn, "TST");
+        // 2 backlog, 1 todo, 3 done; active/cancelled stay 0.
+        for (status, n) in [("backlog", 2), ("todo", 1), ("done", 3)] {
+            for i in 0..n {
+                quick_issue(&conn, pid, &format!("{status} {i}"), status, "none");
+            }
+        }
+        let counts = count_issues_by_status(&conn, pid).unwrap();
+        assert_eq!(counts.backlog, 2);
+        assert_eq!(counts.todo, 1);
+        assert_eq!(counts.active, 0);
+        assert_eq!(counts.done, 3);
+        assert_eq!(counts.cancelled, 0);
+        assert_eq!(counts.total, 6);
+    }
+
+    #[test]
+    fn count_issues_by_status_scoped_to_project() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let pid_a = seed_project(&conn, "AAA");
+        let pid_b = seed_project(&conn, "BBB");
+        quick_issue(&conn, pid_a, "Mine", "todo", "none");
+        quick_issue(&conn, pid_b, "Not mine", "todo", "none");
+        quick_issue(&conn, pid_b, "Also not mine", "done", "none");
+
+        let counts = count_issues_by_status(&conn, pid_a).unwrap();
+        assert_eq!(counts.total, 1, "must not count other projects' issues");
+        assert_eq!(counts.todo, 1);
+
+        let empty = count_issues_by_status(&conn, pid_a + 999).unwrap();
+        assert_eq!(empty.total, 0, "unknown project yields all-zero counts");
     }
 
     #[test]

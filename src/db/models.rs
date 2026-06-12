@@ -121,6 +121,19 @@ pub struct ListIssuesQuery {
     pub offset: Option<i64>,
 }
 
+/// Per-status issue counts for a project (LIF-161). `total` is the sum of
+/// all statuses so the UI never has to add them up (or worse, infer the
+/// total from a length-capped list fetch).
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct IssueStatusCounts {
+    pub backlog: i64,
+    pub todo: i64,
+    pub active: i64,
+    pub done: i64,
+    pub cancelled: i64,
+    pub total: i64,
+}
+
 fn default_status() -> String {
     "backlog".to_string()
 }

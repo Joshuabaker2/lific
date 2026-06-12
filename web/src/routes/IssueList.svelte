@@ -7,6 +7,8 @@
     updateIssue,
     createIssue,
     deleteIssue,
+    getIssueCounts,
+    type IssueStatusCounts,
     type Issue,
     type Project,
     type Module,
@@ -64,6 +66,9 @@
 
   let project = $state<Project | null>(null);
   let issues = $state<Issue[]>([]);
+  // LIF-161: true per-status tallies from the server. The fetched `issues`
+  // array is limit-capped, so its length is NOT a reliable count — this is.
+  let issueCounts = $state<IssueStatusCounts | null>(null);
   let modules = $state<Module[]>([]);
   let labels = $state<Label[]>([]);
   let loading = $state(true);
@@ -204,6 +209,8 @@
   async function loadProject(identifier: string) {
     loading = true;
     error = "";
+    // Don't let the previous project's tallies linger while we fetch.
+    issueCounts = null;
     const projRes = await listProjects();
     if (!projRes.ok) {
       error = projRes.error;
@@ -239,7 +246,11 @@
 
     const filters: Record<string, unknown> = {
       project_id: project.id,
-      limit: 200,
+      // LIF-161: was 200, which silently truncated both the list and the
+      // topbar count once a project outgrew it. Still bounded so a huge
+      // project can't pull megabytes of descriptions per poll; the topbar
+      // tallies come from the counts endpoint, not from this fetch.
+      limit: 1000,
     };
     if (filterStatus) filters.status = filterStatus;
     if (filterPriority) filters.priority = filterPriority;
@@ -249,9 +260,17 @@
       if (mod) filters.module_id = mod.id;
     }
 
-    const res = await listIssues(filters);
+    // Counts ride along with every issue fetch (initial load, filter
+    // change, 15s poll) so the topbar tallies converge with the rows.
+    const [res, countsRes] = await Promise.all([
+      listIssues(filters),
+      getIssueCounts(project.id),
+    ]);
     if (res.ok) {
       issues = res.data;
+    }
+    if (countsRes.ok) {
+      issueCounts = countsRes.data;
     }
   }
 
@@ -464,6 +483,30 @@
   function hasActiveFilters(): boolean {
     return !!(filterStatus || filterPriority || filterLabel || filterModule);
   }
+
+  // ── LIF-161: topbar tallies ──────────────────────────
+  // Per-status counts for the cluster next to the breadcrumb. Server truth,
+  // independent of the (capped) list fetch and of any active filters.
+  let statusCounts = $derived.by(() => {
+    const c = issueCounts;
+    if (!c) return [];
+    return STATUSES.map((s) => ({
+      status: s,
+      count: c[s as keyof IssueStatusCounts],
+    }));
+  });
+
+  // The number beside "Issues"/"Board". Shows the true total; when the view
+  // is narrowed (filters or search) it becomes "shown of total" so the two
+  // numbers can't be mistaken for each other.
+  let countLabel = $derived.by(() => {
+    if (!issueCounts) return loading ? "" : String(filteredIssues.length);
+    const total = issueCounts.total;
+    const narrowed = hasActiveFilters() || !!searchQuery.trim();
+    return narrowed && filteredIssues.length !== total
+      ? `${filteredIssues.length} of ${total}`
+      : String(total);
+  });
 
   function clearFilters() {
     filterStatus = "";
@@ -1033,15 +1076,44 @@
         <span class="text-[0.8125rem] font-medium text-[var(--text)]">
           {layout === "board" ? "Board" : "Issues"}
         </span>
-        {#if !loading}
+        {#if countLabel}
           <span
             class="ml-1 text-[0.6875rem] text-[var(--text-faint)] font-medium
                    tabular-nums"
           >
-            {filteredIssues.length}
+            {countLabel}
           </span>
         {/if}
       </div>
+
+      <!-- LIF-161: per-status tallies (server truth, immune to the list
+           fetch cap). Clicking one toggles the matching status filter. -->
+      {#if statusCounts.length > 0}
+        <div class="flex items-center gap-0.5">
+          {#each statusCounts as { status, count } (status)}
+            {#if count > 0}
+              <Tooltip
+                content={`${count} ${status}${filterStatus === status ? "  ·  click to clear" : ""}`}
+                placement="bottom"
+              >
+                <button
+                  class="h-6 flex items-center gap-1 px-1.5 rounded
+                         text-[0.6875rem] font-medium tabular-nums
+                         transition-colors
+                         {filterStatus === status
+                    ? 'bg-[var(--bg-subtle)] text-[var(--text)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
+                  onclick={() =>
+                    (filterStatus = filterStatus === status ? "" : status)}
+                >
+                  <StatusIcon {status} size={12} />
+                  {count}
+                </button>
+              </Tooltip>
+            {/if}
+          {/each}
+        </div>
+      {/if}
 
       <!-- View switcher pill. Routes to `/{project}/issues` for list mode,
            `/{project}/board` for board mode. Active state derives from the
