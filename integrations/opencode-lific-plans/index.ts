@@ -192,12 +192,35 @@ Each todo: { content, status (pending|in_progress|completed|cancelled), priority
 Requires the folder's Lific project to be set first via \`set_lific_project\`; if it isn't, this tool fails with instructions.`;
 
 export const LificPlans: Plugin = async ({ client, worktree, directory }, options) => {
-  const cfg = loadConfig(options);
-  const lific = cfg ? new Lific(cfg) : null;
+  let cfg = loadConfig(options);
+  let lific = cfg ? new Lific(cfg) : null;
   const projectIdCache = new Map<string, number | null>();
+  const mcpServerName =
+    (typeof options?.mcpServer === "string" ? (options.mcpServer as string) : "") ||
+    process.env.LIFIC_MCP_SERVER ||
+    "lific";
 
   const log = (level: string, message: string) =>
     client.app.log({ body: { service: "lific-plans", level: level as never, message } }).catch(() => {});
+
+  // No duplicated credentials: if URL/key weren't given explicitly, reuse the
+  // Lific MCP server's own connection from opencode.json (its `url` minus the
+  // /mcp suffix + the bearer token in its Authorization header). Explicit
+  // options/env still win. Runs in the `config` hook, before any tool executes.
+  function deriveFromMcp(config: unknown) {
+    if (cfg) return;
+    const servers = (config as { mcp?: Record<string, any> } | undefined)?.mcp;
+    const m = servers?.[mcpServerName];
+    if (!m) return;
+    const rawUrl = typeof m.url === "string" ? m.url : "";
+    const authHeader = m.headers?.Authorization ?? m.headers?.authorization ?? "";
+    const token = typeof authHeader === "string" ? authHeader.replace(/^Bearer\s+/i, "").trim() : "";
+    const url = rawUrl.replace(/\/mcp\/?$/i, "").replace(/\/+$/, "");
+    if (url && token) {
+      cfg = { url, apiKey: token };
+      lific = new Lific(cfg);
+    }
+  }
 
   async function resolveProjectId(identifier: string): Promise<number | null> {
     if (projectIdCache.has(identifier)) return projectIdCache.get(identifier)!;
@@ -230,6 +253,10 @@ export const LificPlans: Plugin = async ({ client, worktree, directory }, option
   }
 
   return {
+    // Pull connection details from the Lific MCP server config (once, at init).
+    config: async (config) => {
+      deriveFromMcp(config);
+    },
     tool: {
       // Set the Lific project for THIS folder — required before planning.
       set_lific_project: tool({
@@ -239,16 +266,21 @@ export const LificPlans: Plugin = async ({ client, worktree, directory }, option
           project: tool.schema.string().describe("Lific project identifier, e.g. LIF"),
         },
         async execute(args, context) {
-          if (!lific || !cfg) {
-            throw new Error("Lific is not configured — set LIFIC_URL and LIFIC_API_KEY (plugin options or env).");
+          const lf = lific;
+          const c = cfg;
+          if (!lf || !c) {
+            throw new Error(
+              `Lific is not configured. Add a Lific MCP server named '${mcpServerName}' to opencode.json ` +
+                `(the plugin reads its url + bearer token), or set LIFIC_URL and LIFIC_API_KEY.`,
+            );
           }
           const project = args.project.trim();
           if (!project) throw new Error("project identifier is required");
           const pid = await resolveProjectId(project).catch((e) => {
-            throw new Error(`couldn't reach Lific at ${cfg.url}: ${String(e)}`);
+            throw new Error(`couldn't reach Lific at ${c.url}: ${String(e)}`);
           });
           if (pid == null) {
-            const ids = await lific
+            const ids = await lf
               .projects()
               .then((ps) => ps.map((p) => p.identifier))
               .catch(() => []);
@@ -287,7 +319,9 @@ export const LificPlans: Plugin = async ({ client, worktree, directory }, option
           context.metadata({ title: `${incomplete} todos`, metadata: { todos } });
 
           let footer = "";
-          if (lific && cfg) {
+          const lf = lific;
+          const c = cfg;
+          if (lf && c) {
             const key = folderKey(context.worktree, context.directory);
             const project = getFolderProject(key);
             if (!project) {
@@ -298,13 +332,13 @@ export const LificPlans: Plugin = async ({ client, worktree, directory }, option
             }
             try {
               const planId = await ensurePlan(context.sessionID, project);
-              const plan = await syncTodos(lific, planId, todos);
+              const plan = await syncTodos(lf, planId, todos);
               const store = readStore(context.sessionID);
               store.latest = planId;
               writeStore(context.sessionID, store);
               footer = `\n\nLific plan: ${plan.identifier} — ${plan.done_count}/${plan.step_count} done`;
             } catch (err) {
-              throw new Error(`Lific planning failed — is Lific reachable at ${cfg.url}? (${String(err)})`);
+              throw new Error(`Lific planning failed — is Lific reachable at ${c.url}? (${String(err)})`);
             }
           }
           return JSON.stringify(todos, null, 2) + footer;
@@ -313,11 +347,12 @@ export const LificPlans: Plugin = async ({ client, worktree, directory }, option
     },
 
     "experimental.session.compacting": async ({ sessionID }, output) => {
-      if (!lific) return;
+      const lf = lific;
+      if (!lf) return;
       const planId = readStore(sessionID).latest;
       if (planId == null) return;
       try {
-        const plan = await lific.getPlan(planId);
+        const plan = await lf.getPlan(planId);
         if (plan.step_count === 0) return;
         output.context.push(
           `## Active Lific plan (${plan.identifier})\n` +

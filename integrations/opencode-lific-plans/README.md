@@ -52,26 +52,32 @@ cp index.ts ~/.config/opencode/plugin/lific-plans.ts
 }
 ```
 
-## Configure (connection only)
+## Configure (connection)
 
-Just the Lific connection — env vars or plugin options. There is **no global
-project setting**; the project is chosen per folder (see below).
-
-```bash
-export LIFIC_URL="https://your-lific-instance"
-export LIFIC_API_KEY="lific_sk_…"        # Lific → Settings → API keys
-```
+**If you already have the Lific MCP server in `opencode.json`, there's nothing
+to configure** — the plugin reuses that connection. It reads the MCP server's
+`url` (minus the `/mcp` suffix) and the bearer token from its `Authorization`
+header, so credentials aren't duplicated:
 
 ```jsonc
 {
-  "plugin": [
-    ["file:///abs/path/to/integrations/opencode-lific-plans/index.ts", {
-      "url": "https://your-lific-instance",
-      "apiKey": "lific_sk_…"
-    }]
-  ]
+  "mcp": {
+    "lific": {
+      "type": "remote",
+      "url": "https://your-lific-instance/mcp",
+      "headers": { "Authorization": "Bearer lific_sk_…" }
+    }
+  }
 }
 ```
+
+By default it looks for a server named `lific`; override with `LIFIC_MCP_SERVER`
+or the `mcpServer` plugin option.
+
+To use a **different** key/instance than the MCP one, set explicit values (these
+take precedence): env `LIFIC_URL` + `LIFIC_API_KEY`, or plugin options
+`{ url, apiKey }`. There is **no global project setting** — the project is chosen
+per folder (below).
 
 Restart OpenCode after changing config — plugins load once at startup.
 
