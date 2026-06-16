@@ -1,6 +1,7 @@
 <script lang="ts">
   import { login, saveSession } from "../lib/api";
-  import ThemeToggle from "../lib/ThemeToggle.svelte";
+  import AuthShell from "../lib/AuthShell.svelte";
+  import { AlertTriangle } from "lucide-svelte";
 
   let { navigate }: { navigate: (path: string) => void } = $props();
 
@@ -26,137 +27,65 @@
   }
 </script>
 
-<div class="grid min-h-dvh md:grid-cols-2">
-  <!-- Left panel -->
-  <aside
-    class="hidden md:flex flex-col justify-between p-10
-           bg-[var(--panel-bg)] text-[var(--panel-text)]"
-  >
-    <div></div>
-    <div class="animate-reveal delay-150">
-      <a
-        href="https://github.com/VoidNullable/lific"
-        target="_blank"
-        rel="noopener noreferrer"
-        title="View Lific on GitHub"
-        class="inline-block mb-6 hover:opacity-80 transition-opacity"
+<AuthShell
+  {navigate}
+  title="Welcome back"
+  subtitle="Sign in with your username or email."
+  altText="No account?"
+  altLabel="Create one"
+  altHref="/signup"
+>
+  <form onsubmit={handleSubmit} class="flex flex-col gap-4">
+    {#if error}
+      <div
+        class="flex items-start gap-2 text-[0.8125rem] text-[var(--error)]
+               bg-[var(--error-bg)] px-3 py-2.5 rounded-lg"
+        role="alert"
       >
-        <img src="/logo.webp" alt="Lific" width="128" height="128" />
-      </a>
-      <h1 class="font-display text-[clamp(2.5rem,5vw,3.5rem)] leading-[1.1] tracking-tight text-[var(--panel-text)] mb-4">
-        Lific
-      </h1>
-      <p class="text-[1.0625rem] leading-relaxed text-[var(--panel-muted)] max-w-[24ch]">
-        Lightweight issue tracking built for AI-driven development.<br />Single binary. MCP built in.
-      </p>
-      <div class="flex items-center gap-2 mt-10 text-[0.8125rem] text-[var(--panel-muted)]">
-        <span>v{__APP_VERSION__}</span>
-        <span class="w-4 h-px bg-[var(--panel-muted)]"></span>
-        <span>Designed for prolific projects</span>
+        <AlertTriangle size={15} class="shrink-0 mt-0.5" />
+        <span>{error}</span>
       </div>
-    </div>
-  </aside>
+    {/if}
 
-  <!-- Right panel -->
-  <main class="flex flex-col items-center justify-center p-10">
-    <div class="w-full max-w-[360px] animate-reveal delay-300">
+    <label class="flex flex-col gap-1.5">
+      <span class="text-[0.6875rem] font-semibold uppercase tracking-widest text-[var(--text-faint)]">
+        Username or email
+      </span>
+      <input
+        type="text"
+        bind:value={identity}
+        placeholder="jane"
+        required
+        autocomplete="username"
+        aria-invalid={error ? "true" : undefined}
+        class="rounded-lg px-3 py-2.5 text-[0.9375rem]"
+      />
+    </label>
 
-      <!-- Mobile brand -->
-      <div class="md:hidden flex items-center gap-3 mb-6">
-        <a
-          href="https://github.com/VoidNullable/lific"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="View Lific on GitHub"
-          class="inline-block hover:opacity-80 transition-opacity"
-        >
-          <img src="/logo.webp" alt="Lific" width="40" height="40" />
-        </a>
-        <h1 class="font-display text-2xl text-[var(--text)]">Lific</h1>
-      </div>
+    <label class="flex flex-col gap-1.5">
+      <span class="text-[0.6875rem] font-semibold uppercase tracking-widest text-[var(--text-faint)]">
+        Password
+      </span>
+      <input
+        type="password"
+        bind:value={password}
+        required
+        autocomplete="current-password"
+        class="rounded-lg px-3 py-2.5 text-[0.9375rem]"
+      />
+    </label>
 
-      <div class="mb-10">
-        <h2 class="font-display text-[clamp(1.5rem,3vw,2rem)] text-[var(--text)] mb-1">Sign in</h2>
-        <p class="text-[0.9375rem] text-[var(--text-muted)]">
-          Enter your username or email to continue.
-        </p>
-      </div>
-
-      <form onsubmit={handleSubmit} class="flex flex-col gap-6">
-        {#if error}
-          <div
-            class="text-sm text-[var(--error)] bg-[var(--error-bg)]
-                   px-4 py-2 rounded-md border-l-[3px] border-[var(--error)]"
-            role="alert"
-          >
-            {error}
-          </div>
-        {/if}
-
-        <div class="flex flex-col">
-          <label
-            for="identity"
-            class="text-[0.8125rem] font-medium text-[var(--text-muted)]
-                   uppercase tracking-wider mb-1"
-          >
-            Username or email
-          </label>
-          <input
-            id="identity"
-            type="text"
-            bind:value={identity}
-            placeholder="jane"
-            required
-            autocomplete="username"
-            aria-invalid={error ? "true" : undefined}
-            class="rounded-md px-3 py-2.5 text-[0.9375rem]"
-          />
-        </div>
-
-        <div class="flex flex-col">
-          <label
-            for="password"
-            class="text-[0.8125rem] font-medium text-[var(--text-muted)]
-                   uppercase tracking-wider mb-1"
-          >
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            bind:value={password}
-            required
-            autocomplete="current-password"
-            class="rounded-md px-3 py-2.5 text-[0.9375rem]"
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          class="mt-2 rounded-md bg-[var(--accent)] text-[var(--accent-text)]
-                 text-[0.9375rem] font-medium py-2.5 px-5
-                 transition-all duration-200
-                 hover:bg-[var(--accent-hover)] active:scale-[0.98]
-                 disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {loading ? "Signing in..." : "Sign in"}
-        </button>
-      </form>
-
-      <p class="text-center mt-10 text-[0.875rem] text-[var(--text-muted)]">
-        No account?
-        <button
-          class="text-[var(--accent)] font-medium bg-transparent border-none cursor-pointer hover:underline"
-          onclick={() => navigate("/signup")}
-        >
-          Create one
-        </button>
-      </p>
-
-      <div class="flex justify-center mt-6">
-        <ThemeToggle />
-      </div>
-    </div>
-  </main>
-</div>
+    <button
+      type="submit"
+      disabled={loading}
+      class="mt-2 rounded-lg bg-[var(--btn-success)] text-[var(--btn-success-text)]
+             text-[0.9375rem] font-medium py-2.5 px-5
+             transition-all duration-200
+             hover:bg-[var(--btn-success-hover)] motion-safe:active:scale-[0.98]
+             focus-visible:ring-2 focus-visible:ring-[var(--btn-success)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]
+             disabled:opacity-60 disabled:cursor-not-allowed"
+    >
+      {loading ? "Signing in…" : "Sign in"}
+    </button>
+  </form>
+</AuthShell>
