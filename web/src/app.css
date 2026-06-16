@@ -91,8 +91,13 @@
   --error-text: #fff;
   --success: var(--color-green-600);
   --success-bg: var(--color-green-bg);
-  --btn-success: #116631;
-  --btn-success-hover: #17824a;
+  /* Vibrant emerald + dark text, mirroring dark mode's #3bb266 pill so
+     the primary button reads as the same "lizard green" in both themes.
+     The old #116631 was a dark, desaturated forest green that went muddy
+     brown on the warm cream bg — and worse, it carried near-black text
+     (2.65:1, failed WCAG AA). This green holds stone-950 text at 5.4:1. */
+  --btn-success: #1a9d50;
+  --btn-success-hover: #1fb55c;
   --btn-success-text: var(--color-stone-950);
   --warn: var(--color-orange-600);
 
