@@ -31,7 +31,6 @@
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import { getContext } from "svelte";
-  import { fuzzyMatch, buildSnippet } from "../lib/fuzzy";
   import { formatRelative } from "../lib/format";
   import { startAutoRefresh } from "../lib/autoRefresh.svelte";
   import {
@@ -40,15 +39,7 @@
     type SortField,
     type SortDir,
   } from "../lib/issues/sort";
-
-  // LIF-119: search tuning, kept identical to the page list (LIF-118) so
-  // the two list views feel consistent. See web/src/lib/fuzzy.ts for the
-  // scorer and the rationale on each constant.
-  const SCORE_THRESHOLD = 0.25;
-  const RESULT_CAP = 50;
-  const CONTENT_SCAN_MAX = 4000;
-  const CONTENT_WEIGHT = 0.6;
-  const IDENTIFIER_WEIGHT = 0.9;
+  import { computeSearchResult, RESULT_CAP } from "../lib/issues/search";
 
   const topbarCtx = getContext<{
     set: (s: import("svelte").Snippet | undefined) => void;
@@ -404,61 +395,11 @@
     }),
   );
 
-  // LIF-119: fuzzy full-text search across title, identifier, and
-  // description. We compute the filtered set AND the per-issue score map
-  // in a single derived so we never have to write a $state from inside
-  // a $derived (Svelte's state_unsafe_mutation guard). Downstream code
-  // reads `filteredIssues` and `issueSearchScores` as derived projections
-  // of this one result.
-  interface SearchHit {
-    score: number;
-    snippet: string | null;
-  }
-
-  let searchResult = $derived.by<{
-    issues: Issue[];
-    scores: Map<number, SearchHit>;
-  }>(() => {
-    const q = searchQuery.trim();
-    if (!q) return { issues, scores: new Map() };
-
-    const scores = new Map<number, SearchHit>();
-    const hits: Array<{ issue: Issue; score: number }> = [];
-
-    for (const issue of issues) {
-      const titleHit = fuzzyMatch(q, issue.title);
-      const idHit = fuzzyMatch(q, issue.identifier);
-      const body = issue.description.slice(0, CONTENT_SCAN_MAX);
-      const descHit = fuzzyMatch(q, body);
-
-      const titleScore = titleHit?.score ?? 0;
-      const idScore = (idHit?.score ?? 0) * IDENTIFIER_WEIGHT;
-      const descScore = (descHit?.score ?? 0) * CONTENT_WEIGHT;
-
-      const best = Math.max(titleScore, idScore, descScore);
-      if (best < SCORE_THRESHOLD) continue;
-
-      const snippet =
-        descHit && descScore === best && best > 0
-          ? buildSnippet(body, descHit.matchStart, descHit.matchEnd)
-          : null;
-
-      scores.set(issue.id, { score: best, snippet });
-      hits.push({ issue, score: best });
-    }
-
-    hits.sort((a, b) => b.score - a.score);
-    const capped = hits.slice(0, RESULT_CAP);
-
-    // Drop scores for issues that fell off the result cap so the
-    // comparator doesn't grant relevance ordering to invisible rows.
-    const capIds = new Set(capped.map((h) => h.issue.id));
-    for (const id of [...scores.keys()]) {
-      if (!capIds.has(id)) scores.delete(id);
-    }
-
-    return { issues: capped.map((h) => h.issue), scores };
-  });
+  // LIF-119: fuzzy full-text search. The scoring/ranking lives in
+  // lib/issues/search.ts; we wrap it in one $derived so downstream code can
+  // read `filteredIssues` and `issueSearchScores` as projections of the
+  // single result (avoids writing $state from inside a $derived).
+  let searchResult = $derived(computeSearchResult(searchQuery, issues));
 
   let filteredIssues = $derived(searchResult.issues);
   let issueSearchScores = $derived(searchResult.scores);
