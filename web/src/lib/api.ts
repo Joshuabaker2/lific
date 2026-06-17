@@ -816,6 +816,27 @@ export const TOOL_TEMPLATES: ToolTemplate[] = [
     generateConfig: (_url, key) =>
       `[mcp_servers.lific]\ntransport.type = "http"\ntransport.url = "${MCP_URL}"\ntransport.bearer_token_env_var = "LIFIC_API_KEY"\n\n# Set this environment variable:\n# export LIFIC_API_KEY="${key}"`,
   },
+  {
+    id: "pi",
+    name: "Pi",
+    description: "Pi coding agent (via pi-mcp-adapter)",
+    configPath: "~/.pi/agent/mcp.json",
+    configNote:
+      'Install the adapter first: pi install npm:pi-mcp-adapter, then restart Pi. Add this to the "mcpServers" section and set the LIFIC_API_KEY env var to the key below (export LIFIC_API_KEY="…").',
+    generateConfig: (_url, key) =>
+      JSON.stringify(
+        {
+          lific: {
+            url: MCP_URL,
+            auth: "bearer",
+            bearerTokenEnv: "LIFIC_API_KEY",
+            lifecycle: "keep-alive",
+          },
+        },
+        null,
+        2
+      ),
+  },
 ];
 
 // ── Plans (LIF-173) ─────────────────────────────────────────
