@@ -16,7 +16,7 @@
 
 ---
 
-Lific's full MCP schema fits in roughly 3,000 tokens. It uses human-readable identifiers (`APP-42`, not UUIDs), runs as a single binary with an embedded SQLite database, and includes a web UI for when you want to look at things yourself.
+Lific's full MCP schema fits in roughly 5,200 tokens. It uses human-readable identifiers (`APP-42`, not UUIDs), runs as a single binary with an embedded SQLite database, and includes a web UI for when you want to look at things yourself.
 
 ## Install
 
@@ -98,6 +98,7 @@ Each connection creates a bot identity tied to your account. Changes show up att
 | `edit_issue` / `edit_page` | Targeted find-and-replace edits without resending the whole body |
 | `get_board` | Board view grouped by status, priority, or module |
 | `search` | Fuzzy full-text search across issues and pages |
+| `get_activity` | Audit history for an issue, page, or whole project — who changed what, when |
 | `link_issues` / `unlink_issues` | Dependency tracking (blocks, relates_to, duplicate) |
 | `get_page` / `create_page` / `update_page` | Markdown documents in folders, with labels and lifecycle status |
 | `add_comment` / `list_comments` | Threaded comments on issues and pages |
@@ -130,7 +131,7 @@ Issues stay flat and lateral; the hierarchy lives on the plan. It's the differen
 | **Issue tracking** | Status, priority, modules with icons, labels, relations, comments, board view, fuzzy search, sort by recent activity |
 | **Plans** | Persisted, nestable step trees that outlive a session; steps mirror issues with two-way done/close sync; first-class tree view and activity history |
 | **Documentation** | Markdown pages in recursive folders, with comments, labels, lifecycle status, full-text search, and Mermaid diagrams |
-| **MCP interface** | 25 tools, human-readable identifiers, compact schema |
+| **MCP interface** | 26 tools, human-readable identifiers, compact schema |
 | **REST API** | Full CRUD for all resources, search, board view |
 | **Web UI** | Markdown editing with live preview, drag-and-drop board, Mermaid and code-copy, dark/light theme |
 | **User accounts** | Individual auth, per-tool bot identities, project lead permissions |
