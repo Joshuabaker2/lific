@@ -12,12 +12,13 @@
     updatePlanStep,
     deletePlanStep,
     listPlanActivity,
-    resolveIssue,
     type Plan,
     type PlanStep,
     type Activity,
+    type Issue,
   } from "../lib/api";
   import DocumentDetail from "../lib/DocumentDetail.svelte";
+  import IssuePickerModal from "../lib/IssuePickerModal.svelte";
   import Markdown from "../lib/Markdown.svelte";
   import { startAutoRefresh } from "../lib/autoRefresh.svelte";
   import { formatDate } from "../lib/format";
@@ -60,6 +61,16 @@
   let collapsed = $state<Set<number>>(new Set());
   let statusOpen = $state(false);
 
+  // Issue-picker modal (LIF-202): replaces the old window.prompt flow for
+  // both anchoring a plan and linking a step to an issue.
+  let pickerOpen = $state(false);
+  // What the next selection should do — "anchor" mutates the plan, while a
+  // step id links that step.
+  let pickerTarget = $state<{ kind: "anchor" } | { kind: "step"; stepId: number } | null>(null);
+  let pickerTitle = $state("Link an issue");
+  let pickerCurrent = $state<string | null>(null);
+  let pickerAllowClear = $state(false);
+
   const STATUSES = ["active", "done", "archived"];
 
   $effect(() => {
@@ -73,6 +84,7 @@
       isBusy: () =>
         mutating ||
         statusOpen ||
+        pickerOpen ||
         addingChildOf !== null ||
         editingTitleOf !== null ||
         editingDescOf !== null,
@@ -132,21 +144,22 @@
     if (res.ok) { plan = res.data; refreshActivity(); }
   }
 
-  async function setAnchor() {
+  function setAnchor() {
     if (!plan) return;
-    const ident = window.prompt("Anchor issue identifier (e.g. LIF-42):", plan.anchor_identifier ?? "");
-    if (ident === null) return;
+    pickerTarget = { kind: "anchor" };
+    pickerTitle = "Set anchor issue";
+    pickerCurrent = plan.anchor_identifier ?? null;
+    pickerAllowClear = true;
+    pickerOpen = true;
+  }
+
+  async function applyAnchor(issueId: number | null) {
+    if (!plan) return;
     mutating = true;
-    if (ident.trim() === "") {
-      const res = await updatePlan(plan.id, { issue_id: null });
-      if (res.ok) plan = res.data;
-    } else {
-      const issue = await resolveIssue(ident.trim());
-      if (!issue.ok) { error = issue.error; mutating = false; return; }
-      const res = await updatePlan(plan.id, { issue_id: issue.data.id });
-      if (res.ok) plan = res.data;
-    }
+    const res = await updatePlan(plan.id, { issue_id: issueId });
     mutating = false;
+    if (res.ok) plan = res.data;
+    else error = res.error;
     refreshActivity();
   }
 
@@ -239,16 +252,37 @@
     mutating = false;
     if (res.ok) { plan = res.data.plan; refreshActivity(); }
   }
-  async function attachIssue(step: PlanStep) {
+  function attachIssue(step: PlanStep) {
     if (!plan) return;
-    const ident = window.prompt("Link issue identifier (e.g. LIF-42):", "");
-    if (!ident || !ident.trim()) return;
-    const issue = await resolveIssue(ident.trim());
-    if (!issue.ok) { error = issue.error; return; }
+    pickerTarget = { kind: "step", stepId: step.id };
+    pickerTitle = "Link an issue to this step";
+    pickerCurrent = step.issue_identifier ?? null;
+    pickerAllowClear = false;
+    pickerOpen = true;
+  }
+
+  async function linkStepIssue(stepId: number, issueId: number) {
+    if (!plan) return;
     mutating = true;
-    const res = await updatePlanStep(plan.id, step.id, { issue_id: issue.data.id });
+    const res = await updatePlanStep(plan.id, stepId, { issue_id: issueId });
     mutating = false;
     if (res.ok) { plan = res.data.plan; refreshActivity(); }
+    else error = res.error;
+  }
+
+  // Dispatch a picker selection to whichever target opened it.
+  function onPickerSelect(issue: Issue) {
+    const t = pickerTarget;
+    pickerTarget = null;
+    if (!t) return;
+    if (t.kind === "anchor") void applyAnchor(issue.id);
+    else void linkStepIssue(t.stepId, issue.id);
+  }
+
+  function onPickerClear() {
+    const t = pickerTarget;
+    pickerTarget = null;
+    if (t?.kind === "anchor") void applyAnchor(null);
   }
 
   // ── Expand/collapse ──
@@ -286,6 +320,8 @@
   {navigate}
   {loading}
   {error}
+  deleteNounLabel="plan"
+  onRetry={() => load(planId)}
   identifier={plan?.identifier ?? `PLAN-${planId}`}
   backRoute={`/${projectIdentifier}/plans`}
   backLabel="Plans"
@@ -304,6 +340,19 @@
   {sidebar}
   layout="two-column"
 />
+
+{#if plan}
+  <IssuePickerModal
+    bind:open={pickerOpen}
+    projectId={plan.project_id}
+    {projectIdentifier}
+    title={pickerTitle}
+    currentIdentifier={pickerCurrent}
+    allowClear={pickerAllowClear}
+    onSelect={onPickerSelect}
+    onClear={onPickerClear}
+  />
+{/if}
 
 {#snippet bodyContent()}
   {#if plan}
