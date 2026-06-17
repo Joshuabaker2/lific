@@ -74,24 +74,54 @@
   }
   let selectedOs = $state<Os>(detectOs());
 
-  // The path for the active OS, plus whether the tool's paths are identical
-  // across OSes (so the modal can hide the OS toggle when it'd be redundant).
-  let pathsDiffer = $derived(
-    connectTool != null &&
-      !(
-        connectTool.configPath.linux === connectTool.configPath.mac &&
-        connectTool.configPath.mac === connectTool.configPath.windows
-      ),
-  );
+  // Group OSes that share an identical config path so the selector merges
+  // them into one button (e.g. "Linux / macOS" when only Windows differs).
+  // Order is stable: Linux, macOS, Windows.
+  type OsGroup = { oses: Os[]; label: string };
+  let osGroups = $derived.by<OsGroup[]>(() => {
+    if (!connectTool) return [];
+    const order: Os[] = ["linux", "mac", "windows"];
+    const groups: OsGroup[] = [];
+    for (const os of order) {
+      const path = connectTool.configPath[os];
+      const existing = groups.find(
+        (g) => connectTool!.configPath[g.oses[0]] === path,
+      );
+      if (existing) existing.oses.push(os);
+      else groups.push({ oses: [os], label: "" });
+    }
+    return groups.map((g) => ({
+      oses: g.oses,
+      label: g.oses.map((o) => OS_LABELS[o]).join(" / "),
+    }));
+  });
+  // True when the tool has more than one distinct path across OSes.
+  let pathsDiffer = $derived(osGroups.length > 1);
   let activePath = $derived(connectTool ? connectTool.configPath[selectedOs] : "");
 
-  // The export line for env-var tools (OS-aware: PowerShell vs POSIX shell).
+  // The command that sets the env var. macOS and Linux share the same POSIX
+  // `export` syntax (both use POSIX shells; the only difference is which
+  // rc-file persists it). Windows uses `setx`, which differs meaningfully:
+  // it writes to the registry for FUTURE shells and does NOT affect the
+  // current one.
   let exportLine = $derived.by(() => {
     if (!connectTool?.usesEnvKey || !connectKey) return "";
     const v = connectTool.envVar ?? "LIFIC_API_KEY";
     return selectedOs === "windows"
       ? `setx ${v} "${connectKey}"`
       : `export ${v}="${connectKey}"`;
+  });
+
+  // Where to put the line so it survives new terminals (OS/shell-specific).
+  let persistHint = $derived.by(() => {
+    switch (selectedOs) {
+      case "mac":
+        return "Runs in the current shell. To persist it, add the line to ~/.zshrc (the default macOS shell).";
+      case "linux":
+        return "Runs in the current shell. To persist it, add the line to ~/.bashrc or ~/.profile.";
+      case "windows":
+        return "setx applies to new terminals, not the current one. Reopen your terminal (or Pi) after running it.";
+    }
   });
 
   let busyId = $state<number | null>(null);
@@ -340,7 +370,7 @@
           <h2 class="text-[1rem] font-semibold text-[var(--text)]">Connected tools</h2>
         </div>
         <p class="text-[0.875rem] text-[var(--text-muted)] mb-5 leading-relaxed">
-          Link an AI coding tool to Lific over MCP. Each connection mints a bot identity that acts on your behalf — disconnect any time.
+          Link an AI coding tool to Lific over MCP. Each connection mints a bot identity that acts on your behalf; disconnect any time.
         </p>
 
         <div class="grid sm:grid-cols-2 gap-2.5">
@@ -540,7 +570,7 @@
         </div>
         <div class="flex-1 min-w-0">
           <h3 class="text-[0.9375rem] font-semibold text-[var(--text)] leading-tight">Connect {connectTool.name}</h3>
-          <p class="text-[0.75rem] text-[var(--text-faint)] truncate">{connectTool.description}</p>
+          <p class="text-[0.75rem] text-[var(--text-muted)] truncate">{connectTool.description}</p>
         </div>
         <button class="size-7 grid place-items-center rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)] transition-colors" onclick={closeConnect} aria-label="Close">
           <X size={16} />
@@ -567,18 +597,21 @@
                the secret inside a config the user might not read. -->
           <section class="mb-5">
             <div class="flex items-center gap-2.5 mb-2">
-              <span class="size-5 shrink-0 grid place-items-center rounded-full bg-[var(--accent)] text-[var(--accent-text)] text-[0.6875rem] font-bold tabular-nums">1</span>
-              <h4 class="flex items-center gap-1.5 text-[0.8125rem] font-semibold text-[var(--text)]">
-                <KeyRound size={13} class="text-[var(--text-muted)]" /> Copy your API key
+              <span class="size-5 shrink-0 grid place-items-center rounded-full bg-[var(--btn-success)] text-[var(--btn-success-text)] text-[0.6875rem] font-bold tabular-nums">1</span>
+              <h4 class="flex items-center gap-1.5 text-[0.875rem] font-semibold text-[var(--text)]">
+                <KeyRound size={14} class="text-[var(--text-muted)]" /> Copy your API key
               </h4>
-              <span class="ml-auto inline-flex items-center gap-1 text-[0.625rem] font-medium uppercase tracking-wide text-[var(--warn)] bg-[color-mix(in_oklab,var(--warn)_12%,transparent)] px-1.5 py-0.5 rounded-full">
+              <span class="ml-auto inline-flex items-center gap-1 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--warn)] bg-[color-mix(in_oklab,var(--warn)_16%,transparent)] px-1.5 py-0.5 rounded-full">
                 <AlertTriangle size={10} /> shown once
               </span>
             </div>
 
-            <div class="rounded-lg border border-[var(--accent)] bg-[color-mix(in_oklab,var(--accent)_6%,var(--bg))] overflow-hidden">
+            <div class="rounded-lg border border-[var(--btn-success)] bg-[color-mix(in_oklab,var(--btn-success)_8%,var(--bg))] overflow-hidden">
               <div class="flex items-center gap-2 px-3 py-2.5">
-                <code class="flex-1 min-w-0 text-[0.8125rem] font-mono text-[var(--text)] overflow-x-auto whitespace-nowrap leading-none py-0.5">{displayKey}</code>
+                <code
+                  class="flex-1 min-w-0 text-[0.8125rem] font-mono text-[var(--text)] overflow-x-auto whitespace-nowrap leading-none py-0.5
+                         {keyRevealed ? '' : 'select-none cursor-default'}"
+                >{displayKey}</code>
                 <button
                   class="shrink-0 size-7 grid place-items-center rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)] transition-colors"
                   onclick={() => (keyRevealed = !keyRevealed)}
@@ -589,10 +622,10 @@
                 </button>
               </div>
               <button
-                class="w-full flex items-center justify-center gap-1.5 py-2 text-[0.8125rem] font-semibold border-t border-[color-mix(in_oklab,var(--accent)_30%,transparent)] transition-colors
+                class="w-full flex items-center justify-center gap-1.5 py-2 text-[0.8125rem] font-semibold border-t border-[color-mix(in_oklab,var(--btn-success)_35%,transparent)] transition-colors
                        {keyCopied
                   ? 'bg-[var(--success-bg)] text-[var(--success)]'
-                  : 'bg-[var(--accent)] text-[var(--accent-text)] hover:bg-[var(--accent-hover)]'}"
+                  : 'bg-[var(--btn-success)] text-[var(--btn-success-text)] hover:bg-[var(--btn-success-hover)]'}"
                 onclick={copyKey}
               >
                 {#if keyCopied}<Check size={14} /> Copied to clipboard{:else}<Copy size={14} /> Copy key{/if}
@@ -603,43 +636,48 @@
           <!-- ── STEP 2 · CONFIG ────────────────────────────────── -->
           <section class="mb-5">
             <div class="flex items-center gap-2.5 mb-2">
-              <span class="size-5 shrink-0 grid place-items-center rounded-full bg-[var(--accent)] text-[var(--accent-text)] text-[0.6875rem] font-bold tabular-nums">2</span>
-              <h4 class="flex items-center gap-1.5 text-[0.8125rem] font-semibold text-[var(--text)]">
-                <FileCode2 size={13} class="text-[var(--text-muted)]" /> Add to your config
+              <span class="size-5 shrink-0 grid place-items-center rounded-full bg-[var(--btn-success)] text-[var(--btn-success-text)] text-[0.6875rem] font-bold tabular-nums">2</span>
+              <h4 class="flex items-center gap-1.5 text-[0.875rem] font-semibold text-[var(--text)]">
+                <FileCode2 size={14} class="text-[var(--text-muted)]" /> Add to your config
               </h4>
             </div>
 
-            <!-- OS selector — full-width segmented row of its own. Always
-                 present, but disabled-looking hint when the path is the same
-                 everywhere so the control still teaches "this is per-OS". -->
-            <div class="flex items-center gap-2 mb-2">
+            <!-- OS selector: its own full-width segmented row. OSes that share
+                 an identical path are merged into one button (e.g. Linux / macOS).
+                 A single group means the path is the same everywhere. -->
+            <div class="flex items-center gap-2 mb-2.5">
               <div class="inline-flex flex-1 p-0.5 rounded-lg bg-[var(--bg)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)]">
-                {#each ["linux", "mac", "windows"] as os (os)}
+                {#each osGroups as group (group.label)}
+                  {@const active = group.oses.includes(selectedOs)}
                   <button
                     class="flex-1 px-2 py-1.5 rounded-md text-[0.75rem] font-medium transition-all
-                           {selectedOs === os
-                      ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.10)]'
+                           {active
+                      ? 'bg-[var(--btn-success)] text-[var(--btn-success-text)] shadow-[0_1px_2px_rgba(0,0,0,0.12)]'
                       : 'text-[var(--text-muted)] hover:text-[var(--text)]'}"
-                    onclick={() => (selectedOs = os as Os)}
+                    onclick={() => (selectedOs = group.oses[0])}
                   >
-                    {OS_LABELS[os as Os]}
+                    {group.label}
                   </button>
                 {/each}
               </div>
               {#if !pathsDiffer}
-                <span class="text-[0.6875rem] text-[var(--text-faint)] shrink-0">same on all OSes</span>
+                <span class="text-[0.6875rem] text-[var(--text-muted)] shrink-0">same everywhere</span>
               {/if}
             </div>
 
             <p class="text-[0.75rem] text-[var(--text-muted)] mb-1.5">
-              File: <code class="font-mono text-[0.75rem] bg-[var(--bg-subtle)] px-1.5 py-0.5 rounded text-[var(--text)] break-all">{activePath}</code>
+              File:
+              <code class="font-mono text-[0.75rem] bg-[var(--bg-subtle)] px-1.5 py-0.5 rounded text-[var(--text)] break-all">{activePath}</code>
             </p>
             {#if connectTool.configNote}
-              <p class="text-[0.75rem] text-[var(--text-faint)] mb-2 leading-relaxed">{connectTool.configNote}</p>
+              <p class="text-[0.75rem] text-[var(--text-muted)] mb-2 leading-relaxed">{connectTool.configNote}</p>
             {/if}
 
             <div class="relative">
-              <pre class="bg-[var(--bg)] border border-[var(--border)] rounded-lg p-3.5 pr-12 text-[0.75rem] font-mono text-[var(--text)] overflow-x-auto leading-relaxed">{displayConfig}</pre>
+              <pre
+                class="bg-[var(--bg)] border border-[var(--border)] rounded-lg p-3.5 pr-12 text-[0.75rem] font-mono text-[var(--text)] overflow-x-auto leading-relaxed
+                       {keyRevealed ? '' : 'select-none'}"
+              >{displayConfig}</pre>
               <button
                 class="absolute top-2 right-2 inline-flex items-center gap-1 text-[0.6875rem] font-semibold
                        px-2 py-1 rounded-md bg-[var(--surface)] border border-[var(--border)]
@@ -655,14 +693,17 @@
           {#if connectTool.usesEnvKey}
             <section class="mb-5">
               <div class="flex items-center gap-2.5 mb-2">
-                <span class="size-5 shrink-0 grid place-items-center rounded-full bg-[var(--accent)] text-[var(--accent-text)] text-[0.6875rem] font-bold tabular-nums">3</span>
-                <h4 class="flex items-center gap-1.5 text-[0.8125rem] font-semibold text-[var(--text)]">
-                  <Terminal size={13} class="text-[var(--text-muted)]" /> Set the env var
-                  <span class="font-normal text-[var(--text-faint)]">· {OS_LABELS[selectedOs]}</span>
+                <span class="size-5 shrink-0 grid place-items-center rounded-full bg-[var(--btn-success)] text-[var(--btn-success-text)] text-[0.6875rem] font-bold tabular-nums">3</span>
+                <h4 class="flex items-center gap-1.5 text-[0.875rem] font-semibold text-[var(--text)]">
+                  <Terminal size={14} class="text-[var(--text-muted)]" /> Set the env var
+                  <span class="font-normal text-[var(--text-muted)]">· {OS_LABELS[selectedOs]}</span>
                 </h4>
               </div>
               <div class="relative">
-                <pre class="bg-[var(--bg)] border border-[var(--border)] rounded-lg p-3 pr-12 text-[0.75rem] font-mono text-[var(--text)] overflow-x-auto">{keyRevealed ? exportLine : exportLine.replace(connectKey, maskedKey)}</pre>
+                <pre
+                  class="bg-[var(--bg)] border border-[var(--border)] rounded-lg p-3 pr-12 text-[0.75rem] font-mono text-[var(--text)] overflow-x-auto
+                         {keyRevealed ? '' : 'select-none'}"
+                >{keyRevealed ? exportLine : exportLine.split(connectKey).join(maskedKey)}</pre>
                 <button
                   class="absolute top-2 right-2 inline-flex items-center gap-1 text-[0.6875rem] font-semibold
                          px-2 py-1 rounded-md bg-[var(--surface)] border border-[var(--border)]
@@ -672,11 +713,12 @@
                   {#if exportCopied}<Check size={12} /> Copied{:else}<Copy size={12} /> Copy{/if}
                 </button>
               </div>
+              <p class="text-[0.6875rem] text-[var(--text-muted)] mt-1.5 leading-relaxed">{persistHint}</p>
             </section>
           {/if}
 
-          <p class="text-[0.6875rem] text-[var(--text-faint)] text-center leading-relaxed">
-            The key is shown only this once — copy it now. You can reconnect any time to mint a fresh one.
+          <p class="text-[0.6875rem] text-[var(--text-muted)] text-center leading-relaxed">
+            The key is shown only this once, so copy it now. You can reconnect any time to mint a fresh one.
           </p>
         {/if}
       </div>

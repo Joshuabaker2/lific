@@ -801,7 +801,7 @@ export const TOOL_TEMPLATES: ToolTemplate[] = [
     configNote:
       "Easiest: run  claude mcp add --transport http --scope user lific " +
       MCP_URL +
-      ' --header "Authorization: Bearer <key>"  — or add the block below to the "mcpServers" section.',
+      ' --header "Authorization: Bearer <key>"  ·  or add the block below to the "mcpServers" section.',
     generateConfig: (_url, key) =>
       JSON.stringify(
         {
@@ -846,7 +846,7 @@ export const TOOL_TEMPLATES: ToolTemplate[] = [
     description: "OpenAI's CLI coding agent",
     configPath: home("~/.codex/config.toml", "%USERPROFILE%\\.codex\\config.toml"),
     configNote:
-      "Add to config.toml under [mcp_servers]. The key is read from the LIFIC_API_KEY env var — set it with the export line below.",
+      "Add to config.toml under [mcp_servers]. The key is read from the LIFIC_API_KEY env var; set it with the command below.",
     usesEnvKey: true,
     envVar: "LIFIC_API_KEY",
     generateConfig: (_url, _key) =>
@@ -858,7 +858,7 @@ export const TOOL_TEMPLATES: ToolTemplate[] = [
     description: "Pi coding agent (via pi-mcp-adapter)",
     configPath: home("~/.pi/agent/mcp.json", "%USERPROFILE%\\.pi\\agent\\mcp.json"),
     configNote:
-      "Install the adapter first:  pi install npm:pi-mcp-adapter  then restart Pi. Add the block below to the \"mcpServers\" section — the key is read from the LIFIC_API_KEY env var (set it with the export line below).",
+      "Install the adapter first:  pi install npm:pi-mcp-adapter  then restart Pi. Add the block below to the \"mcpServers\" section. The key is read from the LIFIC_API_KEY env var (set it with the command below).",
     usesEnvKey: true,
     envVar: "LIFIC_API_KEY",
     generateConfig: (_url, _key) =>
