@@ -46,21 +46,14 @@
     type GroupBy,
     type Density,
   } from "../lib/issues/grouping";
-  import {
-    loadListState,
-    saveListState,
-    saveLayout,
-    loadCollapsedGroups,
-    saveCollapsedGroups,
-    loadHiddenStatuses,
-    saveHiddenStatuses,
-  } from "../lib/issues/persistence";
+  import { saveListState, saveLayout } from "../lib/issues/persistence";
   import IssueCard from "../lib/issues/IssueCard.svelte";
   import BulkActionBar, {
     type BulkMenu,
   } from "../lib/issues/BulkActionBar.svelte";
   import RightSidebar from "../lib/issues/RightSidebar.svelte";
   import IssueRow from "../lib/issues/IssueRow.svelte";
+  import { IssueListState } from "../lib/issues/state.svelte";
 
   const topbarCtx = getContext<{
     set: (s: import("svelte").Snippet | undefined) => void;
@@ -101,13 +94,9 @@
   let loading = $state(true);
   let error = $state("");
 
-  // Filters
-  let filterStatus = $state<string>("");
-  let filterPriority = $state<string>("");
-  let filterLabel = $state<string>("");
-  let filterModule = $state<string>("");
-  let searchQuery = $state("");
-
+  // LIF-99 Phase 3: shared view/interaction state lives in a $state class.
+  // The component still owns the data layer (issues, project, fetches).
+  const view = new IssueListState();
 
   let statusOptions = $derived([
     { value: "", label: "Status" },
@@ -158,41 +147,20 @@
     };
   });
 
-  // Sidebar click-to-filter toggles (mirror the topbar status tallies).
-  function togglePriorityFilter(p: string) {
-    filterPriority = filterPriority === p ? "" : p;
-  }
-  function toggleModuleFilter(name: string) {
-    filterModule = filterModule === name ? "" : name;
-  }
-
   // ── Persisted list/board view state ──────────────────
   // Filters, search, and sort are remembered per-project so navigating
   // away (e.g. into an issue detail) and back doesn't reset the view.
   // Layout (list vs board) is remembered too so IssueDetail's back arrow
-  // knows where to send the user. All localStorage glue lives in
-  // lib/issues/persistence.ts; the effects below just drive it reactively.
-  let stateHydrated = $state(false);
+  // knows where to send the user. The view state itself lives on `view`;
+  // these effects drive its hydrate/snapshot against localStorage.
 
   // Re-run when the project prop changes (read it synchronously so Svelte tracks it)
   $effect(() => {
     const id = projectIdentifier;
-    stateHydrated = false;
-    // Hydrate filters/sort/search per-project so going back from an issue
-    // detail preserves the view. loadListState falls back to {} when nothing
-    // is stored or storage is unavailable.
-    const s = loadListState(id);
-    filterStatus = s.filterStatus ?? "";
-    filterPriority = s.filterPriority ?? "";
-    filterLabel = s.filterLabel ?? "";
-    filterModule = s.filterModule ?? "";
-    searchQuery = s.searchQuery ?? "";
-    if (s.sortField) sortField = s.sortField;
-    if (s.sortDir) sortDir = s.sortDir;
-    if (s.groupBy) groupBy = s.groupBy;
-    if (s.density) density = s.density;
-    collapsedGroups = loadCollapsedGroups(id);
-    stateHydrated = true;
+    view.hydrated = false;
+    // view.hydrate loads filters/sort/display + collapsed/hidden sets, and
+    // flips view.hydrated so the persist effect can start.
+    view.hydrate(id);
     loadProject(id);
   });
 
@@ -202,32 +170,22 @@
     saveLayout(projectIdentifier, layout);
   });
 
-  // Persist filter/sort/search state on change. Gated on stateHydrated
+  // Persist filter/sort/search state on change. Gated on view.hydrated
   // to avoid clobbering storage with defaults during the hydrate pass.
   $effect(() => {
     const id = projectIdentifier;
-    const snapshot = {
-      filterStatus,
-      filterPriority,
-      filterLabel,
-      filterModule,
-      searchQuery,
-      sortField,
-      sortDir,
-      groupBy,
-      density,
-    };
-    if (!stateHydrated) return;
+    const snapshot = view.snapshot();
+    if (!view.hydrated) return;
     saveListState(id, snapshot);
   });
 
   // Reload issues when filters change
   $effect(() => {
     // Reference the filter values to create dependency
-    filterStatus;
-    filterPriority;
-    filterLabel;
-    filterModule;
+    view.filterStatus;
+    view.filterPriority;
+    view.filterLabel;
+    view.filterModule;
     if (project) {
       loadIssues();
     }
@@ -279,11 +237,11 @@
       // tallies come from the counts endpoint, not from this fetch.
       limit: 1000,
     };
-    if (filterStatus) filters.status = filterStatus;
-    if (filterPriority) filters.priority = filterPriority;
-    if (filterLabel) filters.label = filterLabel;
-    if (filterModule) {
-      const mod = modules.find((m) => m.name === filterModule);
+    if (view.filterStatus) filters.status = view.filterStatus;
+    if (view.filterPriority) filters.priority = view.filterPriority;
+    if (view.filterLabel) filters.label = view.filterLabel;
+    if (view.filterModule) {
+      const mod = modules.find((m) => m.name === view.filterModule);
       if (mod) filters.module_id = mod.id;
     }
 
@@ -292,7 +250,7 @@
     // LIF-186: when a filter is active we ALSO pull an unfiltered set for the
     // sidebar's project-wide breakdowns; with no filter the filtered fetch is
     // already the full set, so we skip the extra round-trip.
-    const anyFilter = !!(filterStatus || filterPriority || filterLabel || filterModule);
+    const anyFilter = !!(view.filterStatus || view.filterPriority || view.filterLabel || view.filterModule);
     const reqs: Promise<unknown>[] = [listIssues(filters), getIssueCounts(project.id)];
     if (anyFilter) reqs.push(listIssues({ project_id: project.id, limit: 1000 }));
     const [res, countsRes, allRes] = (await Promise.all(reqs)) as [
@@ -342,10 +300,10 @@
       loading ||
       dragActive ||
       mutationsInFlight > 0 ||
-      sortOpen ||
-      hintsOpen ||
-      displayOpen ||
-      newMenuOpen ||
+      view.sortOpen ||
+      view.hintsOpen ||
+      view.displayOpen ||
+      view.newMenuOpen ||
       inlineCreateActive ||
       statusDropdownId !== null ||
       priorityDropdownId !== null ||
@@ -354,7 +312,7 @@
       selectedIds.size > 0 ||
       bulkBusy ||
       // Don't refetch while the user is typing in the search box.
-      (searchExpanded && document.activeElement === searchInputEl)
+      (view.searchExpanded && document.activeElement === searchInputEl)
     );
   }
 
@@ -379,42 +337,13 @@
   // lib/issues/search.ts; we wrap it in one $derived so downstream code can
   // read `filteredIssues` and `issueSearchScores` as projections of the
   // single result (avoids writing $state from inside a $derived).
-  let searchResult = $derived(computeSearchResult(searchQuery, issues));
+  let searchResult = $derived(computeSearchResult(view.searchQuery, issues));
 
   let filteredIssues = $derived(searchResult.issues);
   let issueSearchScores = $derived(searchResult.scores);
 
-  // ── Sort ────────────────────────────────────────────
-  // Ordering logic lives in lib/issues/sort.ts; the component owns only the
-  // reactive field/direction selection. See that module for the per-field
-  // direction semantics.
-  let sortField = $state<SortField>("priority");
-  let sortDir = $state<SortDir>("asc"); // default: urgent first
-
-  // ── LIF-191: grouping + density (Display popover) ─────
-  // Types + the group builder live in lib/issues/grouping.ts; the component
-  // owns only the reactive groupBy/density/collapsed state.
-  let groupBy = $state<GroupBy>("status");
-  let density = $state<Density>("compact");
-  // Collapsed group keys, namespaced `${groupBy}:${groupKey}` so the same
-  // header collapsed under one grouping doesn't hide a same-named one under
-  // another. Persisted per project.
-  let collapsedGroups = $state<Set<string>>(new Set());
-
-  function groupCollapseKey(key: string): string {
-    return `${groupBy}:${key}`;
-  }
-  function isGroupCollapsed(key: string): boolean {
-    return collapsedGroups.has(groupCollapseKey(key));
-  }
-  function toggleGroupCollapsed(key: string) {
-    const k = groupCollapseKey(key);
-    const next = new Set(collapsedGroups);
-    if (next.has(k)) next.delete(k);
-    else next.add(k);
-    collapsedGroups = next;
-    saveCollapsedGroups(projectIdentifier, next);
-  }
+  // Sort, display (group/density), collapsed groups, and the filter/sort
+  // helpers now live on `view` (lib/issues/state.svelte.ts).
 
   // Sort applied to filtered issues. We make a fresh array so we don't
   // mutate the underlying `issues` state in place. The comparator is the
@@ -423,36 +352,26 @@
   let sortedIssues = $derived(
     [...filteredIssues].sort((a, b) =>
       compareIssuesPure(a, b, {
-        searchQuery,
+        searchQuery: view.searchQuery,
         scores: issueSearchScores,
-        sortField,
-        sortDir,
+        sortField: view.sortField,
+        sortDir: view.sortDir,
       }),
     ),
   );
-
-  /** Clicking a field selects it (with default asc) or, if already
-   *  selected, toggles direction. Matches the spreadsheet-column pattern
-   *  users already expect. */
-  function selectSort(field: SortField) {
-    if (sortField === field) {
-      sortDir = sortDir === "asc" ? "desc" : "asc";
-    } else {
-      sortField = field;
-      sortDir = defaultSortDir(field);
-    }
-  }
 
   // LIF-191: generalized grouping for the list view (logic in
   // lib/issues/grouping.ts). Returns ordered groups for the active
   // `groupBy`, or null when the view should render flat.
   let groups = $derived(
-    buildGroups({ sortedIssues, modules, groupBy, searchQuery, filterStatus }),
+    buildGroups({
+      sortedIssues,
+      modules,
+      groupBy: view.groupBy,
+      searchQuery: view.searchQuery,
+      filterStatus: view.filterStatus,
+    }),
   );
-
-  function hasActiveFilters(): boolean {
-    return !!(filterStatus || filterPriority || filterLabel || filterModule);
-  }
 
   // ── LIF-161: topbar tallies ──────────────────────────
   // Per-status counts for the cluster next to the breadcrumb. Server truth,
@@ -472,52 +391,18 @@
   let countLabel = $derived.by(() => {
     if (!issueCounts) return loading ? "" : String(filteredIssues.length);
     const total = issueCounts.total;
-    const narrowed = hasActiveFilters() || !!searchQuery.trim();
+    const narrowed = view.hasActiveFilters() || !!view.searchQuery.trim();
     return narrowed && filteredIssues.length !== total
       ? `${filteredIssues.length} of ${total}`
       : String(total);
   });
 
-  function clearFilters() {
-    filterStatus = "";
-    filterPriority = "";
-    filterLabel = "";
-    filterModule = "";
-    searchQuery = "";
-  }
-
   // ── Topbar UI state ─────────────────────────────────
-  // Search collapses to an icon by default; expands inline on click or `/`.
-  let searchExpanded = $state(false);
+  // Filters, sort, group/density, and the popover flags now live on `view`.
+  // searchInputEl stays here — it's a DOM-element ref the component owns.
   let searchInputEl = $state<HTMLInputElement | null>(null);
-  // Keyboard cheatsheet popover.
-  let hintsOpen = $state(false);
-  // Display options popover (Group/Density). Wired in sub-phase 1b.
-  let displayOpen = $state(false);
-  // Sort popover (field + direction).
-  let sortOpen = $state(false);
-  // Split "New" button caret menu (quick create / full editor / status presets).
-  let newMenuOpen = $state(false);
-
-  // ── Board view: per-status column visibility ─────────
-  // Users can hide columns they don't care about in their workflow
-  // (e.g. "Cancelled" once a project is mid-flight). Stored per-project
-  // in localStorage so the choice persists across reloads.
-  let hiddenStatuses = $state<Set<string>>(new Set());
-
-  function toggleStatusVisibility(status: string) {
-    const next = new Set(hiddenStatuses);
-    if (next.has(status)) next.delete(status);
-    else next.add(status);
-    hiddenStatuses = next;
-    saveHiddenStatuses(projectIdentifier, next);
-  }
-
-  // Re-hydrate hidden-statuses when the active project changes. Each
-  // project owns its own visibility state.
-  $effect(() => {
-    hiddenStatuses = loadHiddenStatuses(projectIdentifier);
-  });
+  // hintsOpen / displayOpen / sortOpen / newMenuOpen and hiddenStatuses now
+  // live on `view`. view.hydrate() also loads hiddenStatuses per project.
 
   // ── Board view: drag-and-drop state ──────────────────
   // svelte-dnd-action needs each zone to own a writable items array
@@ -579,12 +464,12 @@
   }
 
   function openSearch() {
-    searchExpanded = true;
+    view.searchExpanded = true;
     requestAnimationFrame(() => searchInputEl?.focus());
   }
   function maybeCollapseSearch() {
     // Collapse back to icon if user blurred an empty input.
-    if (!searchQuery) searchExpanded = false;
+    if (!view.searchQuery) view.searchExpanded = false;
   }
 
   // ── Keyboard navigation ──────────────────────────────
@@ -755,7 +640,7 @@
     if (groups) {
       const flat: Issue[] = [];
       for (const g of groups) {
-        if (isGroupCollapsed(g.key)) continue;
+        if (view.isGroupCollapsed(g.key)) continue;
         flat.push(...g.issues);
       }
       return flat;
@@ -932,7 +817,7 @@
       case "?":
         // Toggle the keyboard cheatsheet popover.
         e.preventDefault();
-        hintsOpen = !hintsOpen;
+        view.hintsOpen = !view.hintsOpen;
         break;
       case "s":
         if (focusedIndex >= 0 && focusedIndex < flatIssues.length && !statusUpdating && canFireKey()) {
@@ -977,14 +862,14 @@
         }
         break;
       case "Escape":
-        if (newMenuOpen) {
-          newMenuOpen = false;
-        } else if (hintsOpen) {
-          hintsOpen = false;
-        } else if (displayOpen) {
-          displayOpen = false;
-        } else if (sortOpen) {
-          sortOpen = false;
+        if (view.newMenuOpen) {
+          view.newMenuOpen = false;
+        } else if (view.hintsOpen) {
+          view.hintsOpen = false;
+        } else if (view.displayOpen) {
+          view.displayOpen = false;
+        } else if (view.sortOpen) {
+          view.sortOpen = false;
         } else if (bulkMenu !== null) {
           bulkMenu = null;
         } else if (priorityDropdownId !== null) {
@@ -1083,10 +968,10 @@
     statusDropdownId = null;
     priorityDropdownId = null;
     inlineCreateStatusOpen = false;
-    hintsOpen = false;
-    displayOpen = false;
-    sortOpen = false;
-    newMenuOpen = false;
+    view.hintsOpen = false;
+    view.displayOpen = false;
+    view.sortOpen = false;
+    view.newMenuOpen = false;
     bulkMenu = null;
   }}
 />
@@ -1160,18 +1045,18 @@
           {#each statusCounts as { status, count } (status)}
             {#if count > 0}
               <Tooltip
-                content={`${count} ${status}${filterStatus === status ? "  ·  click to clear" : ""}`}
+                content={`${count} ${status}${view.filterStatus === status ? "  ·  click to clear" : ""}`}
                 placement="bottom"
               >
                 <button
                   class="h-6 flex items-center gap-1 px-1.5 rounded
                          text-[0.6875rem] font-medium tabular-nums
                          transition-colors
-                         {filterStatus === status
+                         {view.filterStatus === status
                     ? 'bg-[var(--bg-subtle)] text-[var(--text)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
                   onclick={() =>
-                    (filterStatus = filterStatus === status ? "" : status)}
+                    (view.filterStatus = view.filterStatus === status ? "" : status)}
                 >
                   <StatusIcon {status} size={12} />
                   {count}
@@ -1189,7 +1074,7 @@
     <!-- ── FILTERS (sub-phase 1b will replace with `+ Filter` + chips) ── -->
     <div class="flex items-center gap-1.5">
       <!-- Status -->
-      <Select options={statusOptions} bind:value={filterStatus} placeholder="Status" size="sm" class="w-auto">
+      <Select options={statusOptions} bind:value={view.filterStatus} placeholder="Status" size="sm" class="w-auto">
         {#snippet renderSelected(opt)}
           <span class="flex items-center gap-1.5 text-[0.8125rem]">
             {#if opt.value}
@@ -1213,7 +1098,7 @@
       </Select>
 
       <!-- Priority -->
-      <Select options={priorityOptions} bind:value={filterPriority} placeholder="Priority" size="sm" class="w-auto">
+      <Select options={priorityOptions} bind:value={view.filterPriority} placeholder="Priority" size="sm" class="w-auto">
         {#snippet renderSelected(opt)}
           <span class="flex items-center gap-1.5 text-[0.8125rem]">
             {#if opt.value}
@@ -1238,7 +1123,7 @@
 
       <!-- Labels -->
       {#if labels.length > 0}
-        <Select options={labelOptions} bind:value={filterLabel} placeholder="Label" size="sm" class="w-auto">
+        <Select options={labelOptions} bind:value={view.filterLabel} placeholder="Label" size="sm" class="w-auto">
           {#snippet renderSelected(opt)}
             <span class="flex items-center gap-1.5 text-[0.8125rem]">
               {#if opt.value && opt.color}
@@ -1264,7 +1149,7 @@
 
       <!-- Modules -->
       {#if modules.length > 0}
-        <Select options={moduleOptions} bind:value={filterModule} placeholder="Module" size="sm" class="w-auto">
+        <Select options={moduleOptions} bind:value={view.filterModule} placeholder="Module" size="sm" class="w-auto">
           {#snippet renderSelected(opt)}
             <span class="flex items-center gap-1.5 text-[0.8125rem]">
               {#if opt.value}
@@ -1288,12 +1173,12 @@
         </Select>
       {/if}
 
-      {#if hasActiveFilters()}
+      {#if view.hasActiveFilters()}
         <button
           class="flex items-center gap-1 text-[0.75rem] text-[var(--text-muted)]
                  hover:text-[var(--text)] px-1.5 py-1 rounded-md
                  hover:bg-[var(--bg-subtle)] transition-colors"
-          onclick={clearFilters}
+            onclick={() => view.clearFilters()}
           title="Clear all filters"
         >
           <X size={12} />
@@ -1323,9 +1208,9 @@
            already know from any data tool. -->
       <div class="relative">
         <Tooltip
-          content={sortOpen
+          content={view.sortOpen
             ? null
-            : `Sort: ${sortField === "age" ? "Age" : sortField === "updated" ? "Updated" : sortField === "number" ? "Issue #" : "Priority"} ${sortDir === "asc" ? "ascending" : "descending"}`}
+            : `Sort: ${view.sortField === "age" ? "Age" : view.sortField === "updated" ? "Updated" : view.sortField === "number" ? "Issue #" : "Priority"} ${view.sortDir === "asc" ? "ascending" : "descending"}`}
           placement="bottom"
         >
           <button
@@ -1333,31 +1218,31 @@
                    text-[0.75rem] font-medium
                    text-[var(--text-muted)] hover:text-[var(--text)]
                    hover:bg-[var(--bg-subtle)] transition-colors
-                   {sortOpen ? 'text-[var(--text)] bg-[var(--bg-subtle)]' : ''}"
+                   {view.sortOpen ? 'text-[var(--text)] bg-[var(--bg-subtle)]' : ''}"
             onclick={(e) => {
               e.stopPropagation();
-              sortOpen = !sortOpen;
-              displayOpen = false;
-              hintsOpen = false;
+              view.sortOpen = !view.sortOpen;
+              view.displayOpen = false;
+              view.hintsOpen = false;
             }}
           >
-            {#if sortDir === "asc"}
+            {#if view.sortDir === "asc"}
               <ArrowUp size={12} class="shrink-0" />
             {:else}
               <ArrowDown size={12} class="shrink-0" />
             {/if}
             <span>
-              {sortField === "age"
+              {view.sortField === "age"
                 ? "Age"
-                : sortField === "updated"
+                : view.sortField === "updated"
                   ? "Updated"
-                  : sortField === "number"
+                  : view.sortField === "number"
                     ? "Issue #"
                     : "Priority"}
             </span>
           </button>
         </Tooltip>
-        {#if sortOpen}
+        {#if view.sortOpen}
           <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
           <div
             class="absolute right-0 top-full mt-1.5 z-30 w-[220px]
@@ -1371,14 +1256,14 @@
               Sort by
             </div>
             {#snippet sortRow(field: SortField, label: string, Icon: typeof Hash)}
-              {@const active = sortField === field}
+              {@const active = view.sortField === field}
               <button
                 class="w-full flex items-center justify-between gap-2
                        px-3 py-1.5 text-left transition-colors
                        {active
                   ? 'text-[var(--text)] bg-[var(--bg-subtle)] font-medium'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
-                onclick={() => selectSort(field)}
+                onclick={() => view.selectSort(field)}
               >
                 <span class="flex items-center gap-2">
                   <Icon size={13} class="shrink-0" />
@@ -1386,7 +1271,7 @@
                 </span>
                 {#if active}
                   <span class="text-[var(--accent)] flex items-center">
-                    {#if sortDir === "asc"}
+                    {#if view.sortDir === "asc"}
                       <ArrowUp size={13} />
                     {:else}
                       <ArrowDown size={13} />
@@ -1412,18 +1297,18 @@
            the board has its own column controls. -->
       {#if layout !== "board"}
       <div class="relative">
-        <Tooltip content={displayOpen ? null : "Display options"} placement="bottom">
+        <Tooltip content={view.displayOpen ? null : "Display options"} placement="bottom">
           <button
             class="size-7 flex items-center justify-center rounded-md
                    text-[var(--text-muted)] hover:text-[var(--text)]
                    hover:bg-[var(--bg-subtle)] transition-colors
-                   {displayOpen ? 'text-[var(--text)] bg-[var(--bg-subtle)]' : ''}"
-            onclick={(e) => { e.stopPropagation(); displayOpen = !displayOpen; sortOpen = false; hintsOpen = false; newMenuOpen = false; }}
+                   {view.displayOpen ? 'text-[var(--text)] bg-[var(--bg-subtle)]' : ''}"
+            onclick={(e) => { e.stopPropagation(); view.displayOpen = !view.displayOpen; view.sortOpen = false; view.hintsOpen = false; view.newMenuOpen = false; }}
           >
             <SlidersHorizontal size={14} />
           </button>
         </Tooltip>
-        {#if displayOpen}
+        {#if view.displayOpen}
           <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
           <div
             class="absolute right-0 top-full mt-1.5 z-30 w-[224px]
@@ -1437,13 +1322,13 @@
             {#each [["status", "Status"], ["priority", "Priority"], ["module", "Module"], ["none", "None"]] as [val, label]}
               <button
                 class="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left transition-colors
-                       {groupBy === val
+                       {view.groupBy === val
                   ? 'text-[var(--text)] bg-[var(--bg-subtle)] font-medium'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
-                onclick={() => { groupBy = val as GroupBy; }}
+                onclick={() => { view.groupBy = val as GroupBy; }}
               >
                 {label}
-                {#if groupBy === val}<Check size={13} class="text-[var(--accent)]" />{/if}
+                {#if view.groupBy === val}<Check size={13} class="text-[var(--accent)]" />{/if}
               </button>
             {/each}
 
@@ -1453,13 +1338,13 @@
             {#each [["compact", "Compact"], ["comfortable", "Comfortable"]] as [val, label]}
               <button
                 class="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left transition-colors
-                       {density === val
+                       {view.density === val
                   ? 'text-[var(--text)] bg-[var(--bg-subtle)] font-medium'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
-                onclick={() => { density = val as Density; }}
+                onclick={() => { view.density = val as Density; }}
               >
                 {label}
-                {#if density === val}<Check size={13} class="text-[var(--accent)]" />{/if}
+                {#if view.density === val}<Check size={13} class="text-[var(--accent)]" />{/if}
               </button>
             {/each}
           </div>
@@ -1468,7 +1353,7 @@
       {/if}
 
       <!-- Search: collapsed to icon, expands inline on click or `/`. -->
-      {#if searchExpanded}
+      {#if view.searchExpanded}
         <div class="relative">
           <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-faint)]">
             <Search size={12} />
@@ -1478,13 +1363,13 @@
             type="text"
             placeholder="Search issues..."
             bind:this={searchInputEl}
-            bind:value={searchQuery}
+            bind:value={view.searchQuery}
             onblur={maybeCollapseSearch}
             onkeydown={(e) => {
               if (e.key === "Escape") {
                 e.preventDefault();
-                searchQuery = "";
-                searchExpanded = false;
+                view.searchQuery = "";
+                view.searchExpanded = false;
                 (e.currentTarget as HTMLInputElement).blur();
               }
             }}
@@ -1511,18 +1396,18 @@
 
       <!-- Keyboard cheatsheet popover. -->
       <div class="relative">
-        <Tooltip content={hintsOpen ? null : "Shortcuts  ·  ?"} placement="bottom">
+        <Tooltip content={view.hintsOpen ? null : "Shortcuts  ·  ?"} placement="bottom">
           <button
             class="size-7 flex items-center justify-center rounded-md
                    text-[var(--text-muted)] hover:text-[var(--text)]
                    hover:bg-[var(--bg-subtle)] transition-colors
-                   {hintsOpen ? 'text-[var(--text)] bg-[var(--bg-subtle)]' : ''}"
-            onclick={(e) => { e.stopPropagation(); hintsOpen = !hintsOpen; displayOpen = false; }}
+                   {view.hintsOpen ? 'text-[var(--text)] bg-[var(--bg-subtle)]' : ''}"
+            onclick={(e) => { e.stopPropagation(); view.hintsOpen = !view.hintsOpen; view.displayOpen = false; }}
           >
             <HelpCircle size={14} />
           </button>
         </Tooltip>
-        {#if hintsOpen}
+        {#if view.hintsOpen}
           <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
           <div
             class="absolute right-0 top-full mt-1.5 z-30 w-[240px]
@@ -1589,7 +1474,7 @@
                    motion-safe:active:scale-[0.97]"
             onclick={(e) => {
               e.stopPropagation();
-              newMenuOpen = false;
+              view.newMenuOpen = false;
               startInlineCreateFromEmpty();
             }}
           >
@@ -1615,25 +1500,25 @@
                    focus:outline-none motion-safe:active:scale-[0.97]"
             aria-label="More create options"
             aria-haspopup="menu"
-            aria-expanded={newMenuOpen}
+            aria-expanded={view.newMenuOpen}
             onclick={(e) => {
               e.stopPropagation();
-              newMenuOpen = !newMenuOpen;
-              sortOpen = false;
-              displayOpen = false;
-              hintsOpen = false;
+              view.newMenuOpen = !view.newMenuOpen;
+              view.sortOpen = false;
+              view.displayOpen = false;
+              view.hintsOpen = false;
             }}
           >
             <ChevronDown
               size={14}
-              class="motion-safe:transition-transform {newMenuOpen
+              class="motion-safe:transition-transform {view.newMenuOpen
                 ? 'rotate-180'
                 : ''}"
             />
           </button>
         </div>
 
-        {#if newMenuOpen}
+        {#if view.newMenuOpen}
           <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
           <div
             role="menu"
@@ -1649,7 +1534,7 @@
                      text-[0.8125rem] text-[var(--text)]
                      hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={() => {
-                newMenuOpen = false;
+                view.newMenuOpen = false;
                 startInlineCreateFromEmpty();
               }}
             >
@@ -1669,7 +1554,7 @@
                      text-[0.8125rem] text-[var(--text)]
                      hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={() => {
-                newMenuOpen = false;
+                view.newMenuOpen = false;
                 navigate(`/${projectIdentifier}/issues/new`);
               }}
             >
@@ -1691,7 +1576,7 @@
                        text-[0.8125rem] capitalize text-[var(--text)]
                        hover:bg-[var(--bg-subtle)] transition-colors"
                 onclick={() => {
-                  newMenuOpen = false;
+                  view.newMenuOpen = false;
                   navigate(`/${projectIdentifier}/issues/new?status=${s}`);
                 }}
               >
@@ -1733,7 +1618,7 @@
                bg-[var(--bg-subtle)] border border-[var(--border)]"
       >
         {#each STATUSES as status (status)}
-          {@const visible = !hiddenStatuses.has(status)}
+          {@const visible = !view.hiddenStatuses.has(status)}
           {@const count = sortedIssues.filter((i) => i.status === status).length}
           <Tooltip
             content={`${visible ? "Hide" : "Show"} ${status[0].toUpperCase() + status.slice(1)}`}
@@ -1746,7 +1631,7 @@
                 ? 'bg-[var(--chrome)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.08)]'
                 : 'text-[var(--text-faint)] hover:text-[var(--text-muted)]'}"
               aria-pressed={visible}
-              onclick={() => toggleStatusVisibility(status)}
+              onclick={() => view.toggleStatusVisibility(projectIdentifier, status)}
             >
               <StatusIcon status={status} size={12} />
               <span class="capitalize">{status}</span>
@@ -1791,7 +1676,7 @@
     {:else}
       {#each STATUSES as status (status)}
         {@const colIssues = columnItems[status] ?? []}
-        {#if (!filterStatus || filterStatus === status) && !hiddenStatuses.has(status)}
+        {#if (!view.filterStatus || view.filterStatus === status) && !view.hiddenStatuses.has(status)}
           <div
             class="w-[300px] shrink-0 flex flex-col h-full
                    border-r border-[var(--border)] last:border-r-0"
@@ -2001,7 +1886,7 @@
         </button>
       </ErrorState>
     {:else if filteredIssues.length === 0}
-      {#if hasActiveFilters() || searchQuery}
+      {#if view.hasActiveFilters() || view.searchQuery}
         <!-- Filtered-empty: work exists, it's just hidden behind a
              filter/search, so we keep the recovery affordance. -->
         <div class="flex flex-col items-center justify-center py-20 gap-3">
@@ -2012,7 +1897,7 @@
           <button
             class="text-[0.8125rem] text-[var(--accent)]
                    hover:underline transition-colors"
-            onclick={clearFilters}
+          onclick={() => view.clearFilters()}
           >
             Clear filters
           </button>
@@ -2042,7 +1927,7 @@
           </button>
         </div>
       {/if}
-    {:else if searchQuery.trim()}
+    {:else if view.searchQuery.trim()}
       <!-- LIF-119: search-mode flat ranked list. Bypasses grouping —
            when hunting for an issue by name or content, the status
            buckets are just noise. Ordering is by relevance score
@@ -2060,14 +1945,14 @@
            Offsets only count NON-collapsed preceding groups so keyboard
            focus indices line up with flatIssues. -->
       {#each groups as g, _gi (g.key)}
-        {@const collapsed = isGroupCollapsed(g.key)}
-        {@const groupOffset = groups.slice(0, _gi).reduce((n, gg) => n + (isGroupCollapsed(gg.key) ? 0 : gg.issues.length), 0)}
+        {@const collapsed = view.isGroupCollapsed(g.key)}
+        {@const groupOffset = groups.slice(0, _gi).reduce((n, gg) => n + (view.isGroupCollapsed(gg.key) ? 0 : gg.issues.length), 0)}
         <div class="border-b border-[var(--border)] last:border-b-0">
           <button
             class="w-full sticky top-0 z-10 flex items-center gap-2 px-6 py-2
                    bg-[var(--surface)] border-b border-[var(--border)]
                    hover:bg-[var(--bg-subtle)] transition-colors text-left"
-            onclick={() => toggleGroupCollapsed(g.key)}
+            onclick={() => view.toggleGroupCollapsed(projectIdentifier, g.key)}
           >
             <ChevronRight
               size={13}
@@ -2131,12 +2016,12 @@
       filter shortcut into the existing filter state. -->
  {#if layout !== "board" && !loading && !error}
    <RightSidebar
-     stats={sidebarStats}
-     {modules}
-     {filterPriority}
-     {filterModule}
-     onTogglePriority={togglePriorityFilter}
-     onToggleModule={toggleModuleFilter}
+      stats={sidebarStats}
+      {modules}
+      filterPriority={view.filterPriority}
+      filterModule={view.filterModule}
+      onTogglePriority={(p) => view.togglePriorityFilter(p)}
+     onToggleModule={(name) => view.toggleModuleFilter(name)}
    />
  {/if}
 </div>
@@ -2147,8 +2032,8 @@
     {idx}
     {labels}
     {modules}
-    {density}
-    {groupBy}
+    density={view.density}
+    groupBy={view.groupBy}
     isFocused={idx === focusedIndex}
     isSelected={selectedIds.has(issue.id)}
     selectionActive={selectedIds.size > 0}
