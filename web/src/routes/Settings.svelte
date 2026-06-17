@@ -87,6 +87,9 @@
     const groups: OsGroup[] = [];
     for (const os of order) {
       const path = connectTool.configPath[os];
+      // Skip OSes the tool doesn't support (null path) — e.g. Claude
+      // Desktop on Linux, which Anthropic doesn't ship.
+      if (!path) continue;
       const existing = groups.find(
         (g) => connectTool!.configPath[g.oses[0]] === path,
       );
@@ -249,7 +252,17 @@
     exportCopied = false;
     noteCopiedIdx = null;
     keyRevealed = false;
-    selectedOs = detectOs();
+    // Default to the viewer's OS, but if the tool has no config for it
+    // (e.g. Claude Desktop on Linux), fall back to the first OS it does
+    // support so the modal never opens on an empty path.
+    {
+      const detected = detectOs();
+      selectedOs = template.configPath[detected]
+        ? detected
+        : ((["linux", "mac", "windows"] as Os[]).find(
+            (o) => template.configPath[o],
+          ) ?? "mac");
+    }
     connecting = true;
     const res = await createBot(template.id);
     if (res.ok) {

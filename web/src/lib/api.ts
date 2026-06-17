@@ -719,9 +719,13 @@ export async function getBoard(
 /** Per-OS config-file locations. When all three are identical the modal
  *  collapses them to a single line; Claude Desktop is the only tool whose
  *  paths genuinely differ per OS. Windows paths use %USERPROFILE%/%APPDATA%
- *  (the ~ shorthand isn't a Windows concept). */
+ *  (the ~ shorthand isn't a Windows concept).
+ *
+ *  `linux` is nullable: Anthropic ships no Claude Desktop app for Linux,
+ *  so that tool sets linux: null and the modal hides the Linux option
+ *  entirely rather than offering a config path no app reads. */
 export interface OsPaths {
-  linux: string;
+  linux: string | null;
   mac: string;
   windows: string;
 }
@@ -832,10 +836,12 @@ export const TOOL_TEMPLATES: ToolTemplate[] = [
   {
     id: "claude",
     name: "Claude Desktop",
-    description: "Anthropic's desktop client for Claude",
-    // The one tool with genuinely OS-specific paths.
+    description: "Anthropic's desktop client for Claude (macOS & Windows)",
+    // The one tool with genuinely OS-specific paths. No Linux entry —
+    // Anthropic doesn't ship Claude Desktop for Linux, so the modal omits
+    // that option (Linux users want Claude Code instead).
     configPath: {
-      linux: "~/.config/Claude/claude_desktop_config.json",
+      linux: null,
       mac: "~/Library/Application Support/Claude/claude_desktop_config.json",
       windows: "%APPDATA%\\Claude\\claude_desktop_config.json",
     },
