@@ -57,6 +57,7 @@
     loadHiddenStatuses,
     saveHiddenStatuses,
   } from "../lib/issues/persistence";
+  import IssueCard from "../lib/issues/IssueCard.svelte";
 
   const topbarCtx = getContext<{
     set: (s: import("svelte").Snippet | undefined) => void;
@@ -1821,82 +1822,17 @@
                 onfinalize={(e) => handleFinalize(status, e as CustomEvent<DndEvent<Issue>>)}
               >
               {#each colIssues as issue (issue.id)}
-                <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
-                <article
-                  animate:flip={{ duration: 150 }}
-                  class="bg-[var(--surface)] border border-[var(--border)]
-                         rounded-md p-2.5 cursor-grab active:cursor-grabbing
-                         hover:border-[var(--text-faint)]
-                         transition-colors group"
-                  tabindex="0"
-                  onclick={() =>
-                    navigate(`/${projectIdentifier}/issues/${issue.identifier}`)}
-                >
-                  <!-- Top row: identifier + priority -->
-                  <div class="flex items-center gap-2 mb-1.5">
-                    <span
-                      class="text-[0.6875rem] font-mono
-                             text-[var(--text-faint)]"
-                    >
-                      {issue.identifier}
-                    </span>
-                    <div class="flex-1"></div>
-                    {#if issue.priority !== "none"}
-                      <Tooltip
-                        content={issue.priority[0].toUpperCase() +
-                          issue.priority.slice(1)}
-                      >
-                        <PriorityIcon priority={issue.priority} size={14} />
-                      </Tooltip>
-                    {/if}
-                  </div>
-
-                  <!-- Title -->
-                  <h3
-                    class="text-[0.8125rem] text-[var(--text)] leading-snug
-                           line-clamp-3
-                           {issue.status === 'done' ||
-                           issue.status === 'cancelled'
-                      ? 'line-through text-[var(--text-muted)]'
-                      : ''}"
-                  >
-                    {issue.title}
-                  </h3>
-
-                  <!-- Bottom: labels + updated time. Always rendered —
-                       updated_at always exists, so the time anchor keeps
-                       card heights consistent whether or not labels do. -->
-                    <div
-                      class="flex items-center gap-1.5 mt-2 flex-wrap"
-                    >
-                      {#each issue.labels.slice(0, 3) as lbl}
-                        {@const labelObj = labels.find(
-                          (l) => l.name === lbl
-                        )}
-                        <span
-                          class="text-[0.625rem] font-medium px-1.5 py-0.5
-                                 rounded-full border border-[var(--border)]"
-                          style={labelObj
-                            ? `color: ${labelObj.color}; border-color: ${labelObj.color}40;`
-                            : ""}
-                        >
-                          {lbl}
-                        </span>
-                      {/each}
-                      {#if issue.labels.length > 3}
-                        <span class="text-[0.625rem] text-[var(--text-faint)]">
-                          +{issue.labels.length - 3}
-                        </span>
-                      {/if}
-                      <div class="flex-1"></div>
-                      <span
-                        class="text-[0.625rem] text-[var(--text-faint)]
-                               tabular-nums"
-                      >
-                        {formatRelative(issue.updated_at)}
-                      </span>
-                    </div>
-                </article>
+                <!-- Wrapper carries animate:flip (svelte-dnd-action animates
+                     each direct zone child) and is the draggable item; the
+                     visual card lives in IssueCard. -->
+                <div animate:flip={{ duration: 150 }}>
+                  <IssueCard
+                    {issue}
+                    {labels}
+                    onOpen={(i) =>
+                      navigate(`/${projectIdentifier}/issues/${i.identifier}`)}
+                  />
+                </div>
               {/each}
               </div>
             </div>
