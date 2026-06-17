@@ -60,6 +60,7 @@
   import BulkActionBar, {
     type BulkMenu,
   } from "../lib/issues/BulkActionBar.svelte";
+  import RightSidebar from "../lib/issues/RightSidebar.svelte";
 
   const topbarCtx = getContext<{
     set: (s: import("svelte").Snippet | undefined) => void;
@@ -2090,87 +2091,14 @@
       come from the unfiltered `allIssues`, and every row is a one-click
       filter shortcut into the existing filter state. -->
  {#if layout !== "board" && !loading && !error}
-   <aside
-     class="hidden lg:flex flex-col w-[244px] shrink-0 overflow-y-auto
-            border-l border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-5"
-   >
-     <!-- Summary -->
-     <div class="grid grid-cols-2 gap-3 mb-5">
-       <div>
-         <p class="text-[1.375rem] font-display tracking-tight tabular-nums text-[var(--text)] leading-none">
-           {sidebarStats.total}
-         </p>
-         <p class="text-[0.625rem] font-semibold uppercase tracking-widest text-[var(--text-faint)] mt-1">
-           Issues
-         </p>
-       </div>
-       <div>
-         <p class="text-[1.375rem] font-display tracking-tight tabular-nums text-[var(--text)] leading-none">
-           {sidebarStats.active}
-         </p>
-         <p class="text-[0.625rem] font-semibold uppercase tracking-widest text-[var(--text-faint)] mt-1">
-           Active
-         </p>
-       </div>
-     </div>
-
-     <!-- Priority breakdown — not surfaced anywhere else in the view; each
-          row toggles the Priority filter. -->
-     <p class="text-[0.625rem] font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-2 px-1">
-       Priority
-     </p>
-     <div class="flex flex-col gap-0.5 mb-5">
-       {#each PRIORITIES as p}
-         {#if sidebarStats.prio[p] > 0}
-           <button
-             class="flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[0.8125rem]
-                    transition-colors
-                    {filterPriority === p
-               ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.06)] font-medium'
-               : 'text-[var(--text-muted)] hover:bg-[var(--surface)] hover:text-[var(--text)]'}"
-             onclick={() => togglePriorityFilter(p)}
-           >
-             <PriorityIcon priority={p} size={14} />
-             <span class="flex-1 capitalize">{p}</span>
-             <span class="tabular-nums text-[0.6875rem] text-[var(--text-faint)]">
-               {sidebarStats.prio[p]}
-             </span>
-           </button>
-         {/if}
-       {/each}
-     </div>
-
-     {#if modules.length > 0}
-       <div class="h-px bg-[var(--border)] -mx-4 mb-4"></div>
-       <!-- Module navigator — parallel to the Pages folder navigator;
-            click to focus a module's issues. -->
-       <p class="text-[0.625rem] font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-2 px-1">
-         Modules
-       </p>
-       <div class="flex flex-col gap-0.5">
-         {#each modules as m (m.id)}
-           <button
-             class="flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[0.8125rem]
-                    transition-colors
-                    {filterModule === m.name
-               ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.06)] font-medium'
-               : 'text-[var(--text-muted)] hover:bg-[var(--surface)] hover:text-[var(--text)]'}"
-             onclick={() => toggleModuleFilter(m.name)}
-           >
-             {#if m.emoji}
-               <span class="shrink-0 text-[var(--text-faint)]"><ProjectIcon value={m.emoji} size={14} /></span>
-             {:else}
-               <Layers size={14} class="shrink-0 text-[var(--text-faint)]" />
-             {/if}
-             <span class="flex-1 truncate">{m.name}</span>
-             <span class="tabular-nums text-[0.6875rem] text-[var(--text-faint)]">
-               {sidebarStats.byModule.get(m.id) ?? 0}
-             </span>
-           </button>
-         {/each}
-       </div>
-     {/if}
-   </aside>
+   <RightSidebar
+     stats={sidebarStats}
+     {modules}
+     {filterPriority}
+     {filterModule}
+     onTogglePriority={togglePriorityFilter}
+     onToggleModule={toggleModuleFilter}
+   />
  {/if}
 </div>
 
