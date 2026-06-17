@@ -56,13 +56,18 @@ fn validate_csrf_token(token: &str, binding: &str) -> bool {
     if now - ts > 600 || ts > now + 60 {
         return false;
     }
-    // Verify HMAC over (timestamp || binding)
+    // Verify HMAC over (timestamp || binding). LIF-208: use the MAC's own
+    // constant-time `verify_slice` rather than `expected == sig` on the hex
+    // strings, which short-circuits on the first mismatched byte and leaks a
+    // timing oracle. Decode the presented hex first; malformed hex is a reject.
+    let Ok(sig_bytes) = hex_decode(sig) else {
+        return false;
+    };
     let mut mac = HmacSha256::new_from_slice(&*CSRF_SECRET).unwrap();
     mac.update(ts.to_le_bytes().as_ref());
     mac.update(b".");
     mac.update(binding.as_bytes());
-    let expected = hex_encode(&mac.finalize().into_bytes());
-    expected == sig
+    mac.verify_slice(&sig_bytes).is_ok()
 }
 
 /// Extract the session credential a browser would present: the `Authorization:
@@ -739,7 +744,13 @@ async fn revoke_token(
             }
         }
         Some(t) if t.starts_with("lific_at_") => validate_oauth_token(&state.db, t),
-        Some(_) => true, // API keys validated by auth middleware if routed through it
+        // LIF-208: default-deny unknown bearer shapes. The previous
+        // `Some(_) => true` treated *any* other string (including arbitrary
+        // garbage) as authenticated, which is sloppier than the rest of the
+        // file. The OAuth router doesn't run the API-key middleware and has no
+        // key manager, so it can't validate `lific_sk` keys here; a legitimate
+        // caller revoking a token presents a session or the OAuth token itself.
+        Some(_) => false,
         None => false,
     };
 
@@ -787,6 +798,19 @@ fn validate_pkce(verifier: &str, challenge: &str, method: &str) -> bool {
 /// Encode bytes as lowercase hex string.
 fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Decode a lowercase/uppercase hex string into bytes. Returns `Err(())` on
+/// odd length or any non-hex digit. Used to parse a presented CSRF MAC before
+/// constant-time verification (LIF-208).
+fn hex_decode(s: &str) -> Result<Vec<u8>, ()> {
+    if !s.len().is_multiple_of(2) {
+        return Err(());
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|_| ()))
+        .collect()
 }
 
 fn base64_url_encode(bytes: &[u8]) -> String {
@@ -1135,6 +1159,43 @@ mod tests {
         assert!(validate_csrf_token(&t, "session-A"));
         assert!(!validate_csrf_token(&t, "session-B"));
         assert!(!validate_csrf_token(&t, ""));
+    }
+
+    // ── LIF-208: constant-time CSRF MAC verification ─────────
+    // The validator now hex-decodes the presented signature and verifies it
+    // with the MAC's own constant-time compare. These guard the new decode
+    // path: a valid token still round-trips, and tampered / malformed
+    // signatures are rejected rather than panicking or short-circuiting.
+    #[test]
+    fn csrf_rejects_tampered_and_malformed_signatures() {
+        let t = generate_csrf_token("sess");
+        assert!(validate_csrf_token(&t, "sess"), "honest token must validate");
+
+        let (ts, sig) = t.split_once('.').unwrap();
+
+        // Flip one hex nibble in the signature → MAC mismatch, must reject.
+        let mut bad = sig.to_string();
+        let first = bad.remove(0);
+        let flipped = if first == '0' { '1' } else { '0' };
+        bad.insert(0, flipped);
+        assert!(!validate_csrf_token(&format!("{ts}.{bad}"), "sess"));
+
+        // Non-hex characters in the signature → decode fails, must reject.
+        assert!(!validate_csrf_token(&format!("{ts}.zzzz"), "sess"));
+
+        // Odd-length hex → decode fails, must reject.
+        assert!(!validate_csrf_token(&format!("{ts}.abc"), "sess"));
+
+        // Empty signature → reject.
+        assert!(!validate_csrf_token(&format!("{ts}."), "sess"));
+    }
+
+    #[test]
+    fn hex_decode_roundtrips_and_rejects_bad_input() {
+        assert_eq!(hex_decode("00ff10").unwrap(), vec![0x00, 0xff, 0x10]);
+        assert_eq!(hex_decode(&hex_encode(b"lific")).unwrap(), b"lific");
+        assert!(hex_decode("abc").is_err(), "odd length rejected");
+        assert!(hex_decode("zz").is_err(), "non-hex rejected");
     }
 
     // ── LIF-49: metadata does not advertise refresh_token ────
