@@ -71,10 +71,13 @@
   --surface: #f7faf9;
   --chrome: #fafcfb;
   --text: #18201d;
-  /* Green-tinted dark grays for text; both clear WCAG AA on bg/surface
-     (muted ~6.4:1, faint ~4.4:1). */
+  /* Green-tinted dark grays for text. Both clear WCAG AA (4.5:1) for
+     normal-size text on every light-mode tier (bg / bg-subtle / surface
+     / chrome): muted ≥5.96:1, faint ≥4.69:1. --text-faint was previously
+     #64786e (~3.8–4.5:1), which failed AA on the recessed bg/bg-subtle
+     tiers where it's used for small metadata/labels. */
   --text-muted: #495a53;
-  --text-faint: #64786e;
+  --text-faint: #586a60;
   /* Darker, green-tinted border — visible on every surface. */
   --border: #d0dcd6;
 
@@ -105,6 +108,12 @@
   --btn-success-hover: #2ed673;
   --btn-success-text: var(--color-stone-950);
   --warn: var(--color-orange-600);
+  /* Text/icon color for amber UI sitting ON a tinted warn fill (e.g. the
+     active "Closed"/"Skip web sign-in" toggles). --warn (orange-600) is
+     tuned for borders/icons on plain bg; on the light `warn 15%` fill it's
+     only ~2.7:1 and fails AA for the small toggle label. This deeper burnt
+     orange clears AA (~5.5:1) on that fill while still reading as amber. */
+  --warn-text: #9a3412;
 
   /* Shadow cast by the elevated chrome onto the recessed content panel.
      Applied as an inset shadow on the panel's top/left edges so the
@@ -138,7 +147,11 @@
   --chrome: #1c221f;
   --text: #e3e8e6;
   --text-muted: #9ea9a3;
-  --text-faint: #5f6d66;
+  /* Lightened from #5f6d66 (only 2.6–3.5:1 — failed AA on every dark
+     tier) to clear WCAG AA (4.5:1) for normal text on every dark-mode
+     tier: bg 6.25:1, bg-subtle 5.67:1, surface 4.69:1, chrome 5.32:1.
+     Still clearly below --text-muted so the muted/faint hierarchy reads. */
+  --text-faint: #8a978f;
   --border: #3d4842;
 
   --accent: var(--color-indigo-400);
@@ -155,6 +168,9 @@
   --btn-success-hover: #54c97e;
   --btn-success-text: var(--color-stone-950);
   --warn: var(--color-orange-400);
+  /* In dark mode the bright orange-400 already clears AA (~6.6:1) on the
+     dark `warn 15%` fill, so warn-text mirrors --warn here. */
+  --warn-text: var(--color-orange-400);
 
   /* Heavier in dark mode — the same alpha that's subtle on white reads
      as nothing against a near-black panel. */
