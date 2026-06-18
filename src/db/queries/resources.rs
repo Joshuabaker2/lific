@@ -85,17 +85,14 @@ pub fn resolve_label_name(
 }
 
 pub fn get_module_name(conn: &Connection, id: i64) -> Result<String, LificError> {
-    conn.query_row(
-        "SELECT name FROM modules WHERE id = ?1",
-        params![id],
-        |row| row.get(0),
-    )
-    .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => {
-            LificError::NotFound(format!("module {id} not found"))
-        }
-        _ => e.into(),
-    })
+    conn.prepare_cached("SELECT name FROM modules WHERE id = ?1")?
+        .query_row(params![id], |row| row.get(0))
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                LificError::NotFound(format!("module {id} not found"))
+            }
+            _ => e.into(),
+        })
 }
 
 /// Folder id → name. Used by MCP page output to surface the folder a
@@ -143,7 +140,7 @@ pub fn get_module(conn: &Connection, id: i64) -> Result<Module, LificError> {
 }
 
 pub fn list_modules(conn: &Connection, project_id: i64) -> Result<Vec<Module>, LificError> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, project_id, name, description, status, emoji, created_at, updated_at
          FROM modules WHERE project_id = ?1 ORDER BY name",
     )?;
@@ -238,7 +235,7 @@ pub fn delete_module(conn: &Connection, id: i64) -> Result<(), LificError> {
 }
 
 pub fn list_labels(conn: &Connection, project_id: i64) -> Result<Vec<Label>, LificError> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, project_id, name, color FROM labels WHERE project_id = ?1 ORDER BY name",
     )?;
     let rows = stmt.query_map(params![project_id], |row| {
@@ -310,7 +307,7 @@ pub fn delete_label(conn: &Connection, id: i64) -> Result<(), LificError> {
 }
 
 pub fn list_folders(conn: &Connection, project_id: i64) -> Result<Vec<Folder>, LificError> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, project_id, parent_id, name, sort_order FROM folders WHERE project_id = ?1 ORDER BY sort_order, name",
     )?;
     let rows = stmt.query_map(params![project_id], |row| {

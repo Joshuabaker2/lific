@@ -111,7 +111,7 @@ pub fn actor_stats(
     conn: &Connection,
     project_id: i64,
 ) -> Result<Vec<crate::db::models::ActorStat>, LificError> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT a.actor_user_id, u.username, u.display_name, COALESCE(u.is_bot, 0),
                 COUNT(*) AS actions, MAX(a.ts) AS last_ts,
                 (SELECT t.transport FROM audit_log t

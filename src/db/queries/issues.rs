@@ -8,39 +8,38 @@ use super::unescape_text;
 /// Read a single issue with its computed identifier, labels, and relations.
 pub fn get_issue(conn: &Connection, id: i64) -> Result<Issue, LificError> {
     let mut issue = conn
-        .query_row(
+        .prepare_cached(
             "SELECT i.id, i.project_id, i.sequence, p.identifier, i.title, i.description,
                     i.status, i.priority, i.module_id, i.sort_order,
                     i.start_date, i.target_date, i.created_at, i.updated_at
              FROM issues i
              JOIN projects p ON p.id = i.project_id
              WHERE i.id = ?1",
-            params![id],
-            |row| {
-                let project_ident: String = row.get(3)?;
-                let seq: i64 = row.get(2)?;
-                Ok(Issue {
-                    id: row.get(0)?,
-                    project_id: row.get(1)?,
-                    sequence: seq,
-                    identifier: format!("{project_ident}-{seq}"),
-                    title: row.get(4)?,
-                    description: row.get(5)?,
-                    status: row.get(6)?,
-                    priority: row.get(7)?,
-                    module_id: row.get(8)?,
-                    sort_order: row.get(9)?,
-                    start_date: row.get(10)?,
-                    target_date: row.get(11)?,
-                    created_at: row.get(12)?,
-                    updated_at: row.get(13)?,
-                    labels: Vec::new(),
-                    blocks: Vec::new(),
-                    blocked_by: Vec::new(),
-                    relates_to: Vec::new(),
-                })
-            },
-        )
+        )?
+        .query_row(params![id], |row| {
+            let project_ident: String = row.get(3)?;
+            let seq: i64 = row.get(2)?;
+            Ok(Issue {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                sequence: seq,
+                identifier: format!("{project_ident}-{seq}"),
+                title: row.get(4)?,
+                description: row.get(5)?,
+                status: row.get(6)?,
+                priority: row.get(7)?,
+                module_id: row.get(8)?,
+                sort_order: row.get(9)?,
+                start_date: row.get(10)?,
+                target_date: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
+                labels: Vec::new(),
+                blocks: Vec::new(),
+                blocked_by: Vec::new(),
+                relates_to: Vec::new(),
+            })
+        })
         .map_err(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => {
                 LificError::NotFound(format!("issue {id} not found"))
@@ -48,7 +47,7 @@ pub fn get_issue(conn: &Connection, id: i64) -> Result<Issue, LificError> {
             _ => e.into(),
         })?;
 
-    let mut label_stmt = conn.prepare(
+    let mut label_stmt = conn.prepare_cached(
         "SELECT l.name FROM labels l
          JOIN issue_labels il ON il.label_id = l.id
          WHERE il.issue_id = ?1",
@@ -57,7 +56,7 @@ pub fn get_issue(conn: &Connection, id: i64) -> Result<Issue, LificError> {
         .query_map(params![id], |row| row.get(0))?
         .collect::<Result<Vec<String>, _>>()?;
 
-    let mut blocks_stmt = conn.prepare(
+    let mut blocks_stmt = conn.prepare_cached(
         "SELECT p.identifier, i.sequence FROM issue_relations ir
          JOIN issues i ON i.id = ir.target_id
          JOIN projects p ON p.id = i.project_id
@@ -71,7 +70,7 @@ pub fn get_issue(conn: &Connection, id: i64) -> Result<Issue, LificError> {
         })?
         .collect::<Result<Vec<String>, _>>()?;
 
-    let mut blocked_stmt = conn.prepare(
+    let mut blocked_stmt = conn.prepare_cached(
         "SELECT p.identifier, i.sequence FROM issue_relations ir
          JOIN issues i ON i.id = ir.source_id
          JOIN projects p ON p.id = i.project_id
@@ -85,7 +84,7 @@ pub fn get_issue(conn: &Connection, id: i64) -> Result<Issue, LificError> {
         })?
         .collect::<Result<Vec<String>, _>>()?;
 
-    let mut relates_stmt = conn.prepare(
+    let mut relates_stmt = conn.prepare_cached(
         "SELECT p.identifier, i.sequence FROM issue_relations ir
          JOIN issues i ON i.id = CASE
             WHEN ir.source_id = ?1 THEN ir.target_id
@@ -119,13 +118,12 @@ pub fn resolve_identifier(conn: &Connection, identifier: &str) -> Result<i64, Li
         .parse()
         .map_err(|_| LificError::BadRequest(format!("invalid sequence number in: {identifier}")))?;
 
-    conn.query_row(
+    conn.prepare_cached(
         "SELECT i.id FROM issues i
          JOIN projects p ON p.id = i.project_id
          WHERE p.identifier = ?1 AND i.sequence = ?2",
-        params![project_ident, sequence],
-        |row| row.get(0),
-    )
+    )?
+    .query_row(params![project_ident, sequence], |row| row.get(0))
     .map_err(|e| match e {
         rusqlite::Error::QueryReturnedNoRows => {
             LificError::NotFound(format!("issue {identifier} not found"))
@@ -314,7 +312,7 @@ pub fn count_issues_by_status(
     project_id: i64,
 ) -> Result<IssueStatusCounts, LificError> {
     let mut counts = IssueStatusCounts::default();
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT status, COUNT(*) FROM issues WHERE project_id = ?1 GROUP BY status",
     )?;
     let rows = stmt.query_map(params![project_id], |row| {

@@ -93,6 +93,10 @@ fn apply_pragmas(conn: &Connection) -> Result<(), LificError> {
          PRAGMA cache_size = -8000;
          PRAGMA mmap_size = 67108864;",
     )?;
+    // Match the read pool's statement-cache headroom so prepare_cached()
+    // on the write connection (used for many reads in CLI/tests too) keeps
+    // every distinct static query compiled. See open_read_connection().
+    conn.set_prepared_statement_cache_capacity(64);
     Ok(())
 }
 
@@ -111,6 +115,11 @@ fn open_read_connection(path: &Path) -> Result<Connection, LificError> {
          PRAGMA cache_size = -4000;
          PRAGMA mmap_size = 67108864;",
     )?;
+    // Hold every distinct static read query the pool runs without LRU
+    // eviction. The query layer leans on prepare_cached() to skip SQL
+    // recompilation (~2µs/statement → ~80ns cache hit); rusqlite's default
+    // capacity is 16, which a read connection can exceed across endpoints.
+    conn.set_prepared_statement_cache_capacity(64);
     Ok(conn)
 }
 

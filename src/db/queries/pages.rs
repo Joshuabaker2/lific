@@ -41,7 +41,7 @@ const PAGE_SELECT: &str = "SELECT pg.id, pg.project_id, pg.sequence, p.identifie
 /// populate `Page.labels`. Returns empty for pages with no labels (or for
 /// workspace pages, which can't carry labels yet — LIF-105).
 fn page_labels(conn: &Connection, page_id: i64) -> Result<Vec<String>, LificError> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT l.name FROM labels l
          JOIN page_labels pl ON pl.label_id = l.id
          WHERE pl.page_id = ?1

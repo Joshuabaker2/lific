@@ -91,7 +91,7 @@ pub fn get_plan(conn: &Connection, id: i64) -> Result<Plan, LificError> {
     // Flat fetch of every step (adjacency list), ordered so siblings come out
     // in position order. LEFT JOIN issues for the linked-issue identifier and
     // status (powers "done (via LIF-42)" provenance).
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT s.id, s.plan_id, s.parent_step_id, s.position, s.title, s.description,
                 s.issue_id,
                 CASE WHEN s.issue_id IS NULL THEN NULL

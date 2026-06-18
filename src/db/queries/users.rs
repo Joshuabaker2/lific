@@ -232,7 +232,7 @@ pub fn update_password(
 }
 
 pub fn list_users(conn: &Connection) -> Result<Vec<User>, LificError> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, username, email, password_hash, display_name, is_admin, is_bot, created_at, updated_at
          FROM users ORDER BY created_at",
     )?;
@@ -499,7 +499,7 @@ pub fn list_bots(
     conn: &Connection,
     owner_id: i64,
 ) -> Result<Vec<crate::db::models::Bot>, LificError> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT u.id, u.username, u.display_name, u.owner_id, u.created_at,
                 EXISTS(SELECT 1 FROM api_keys k WHERE k.user_id = u.id AND k.revoked = 0) as has_key
          FROM users u
@@ -597,7 +597,7 @@ pub fn list_user_keys(
     conn: &Connection,
     user_id: i64,
 ) -> Result<Vec<crate::db::models::UserApiKey>, LificError> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, name, created_at, expires_at, revoked
          FROM api_keys WHERE user_id = ?1
          ORDER BY created_at DESC",

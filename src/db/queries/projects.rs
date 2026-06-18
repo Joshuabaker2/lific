@@ -6,7 +6,7 @@ use crate::error::LificError;
 use super::unescape_text;
 
 pub fn list_projects(conn: &Connection) -> Result<Vec<Project>, LificError> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, name, identifier, description, emoji, lead_user_id, created_at, updated_at
          FROM projects ORDER BY name",
     )?;
@@ -26,17 +26,14 @@ pub fn list_projects(conn: &Connection) -> Result<Vec<Project>, LificError> {
 }
 
 pub fn resolve_project_identifier(conn: &Connection, identifier: &str) -> Result<i64, LificError> {
-    conn.query_row(
-        "SELECT id FROM projects WHERE identifier = ?1",
-        params![identifier],
-        |row| row.get(0),
-    )
-    .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => {
-            LificError::NotFound(format!("project '{identifier}' not found"))
-        }
-        _ => e.into(),
-    })
+    conn.prepare_cached("SELECT id FROM projects WHERE identifier = ?1")?
+        .query_row(params![identifier], |row| row.get(0))
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                LificError::NotFound(format!("project '{identifier}' not found"))
+            }
+            _ => e.into(),
+        })
 }
 
 pub fn get_project(conn: &Connection, id: i64) -> Result<Project, LificError> {
