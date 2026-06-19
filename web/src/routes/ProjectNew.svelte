@@ -65,7 +65,7 @@
   <div class="flex items-center gap-3 px-6 py-2 w-full">
     <div class="flex items-center gap-1.5 shrink-0">
       <button
-        class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]
+        class="flex items-center gap-1.5 text-body-sm text-[var(--text-muted)]
                hover:text-[var(--text)] transition-colors rounded px-1.5 py-0.5
                hover:bg-[var(--bg-subtle)]"
         onclick={() => navigate("/settings")}
@@ -74,24 +74,24 @@
         Back
       </button>
       <span class="text-[var(--text-faint)]">/</span>
-      <span class="text-[0.8125rem] font-medium text-[var(--text)]">New project</span>
+      <span class="text-body-sm font-medium text-[var(--text)]">New project</span>
     </div>
 
     <div class="ml-auto flex items-center gap-2 shrink-0">
       {#if error}
-        <span class="text-[0.8125rem] text-[var(--error)] max-w-[min(280px,30vw)] truncate" title={error}>
+        <span class="text-body-sm text-[var(--error)] max-w-[min(280px,30vw)] truncate" title={error}>
           {error}
         </span>
       {/if}
       <button
-        class="text-[0.8125rem] text-[var(--text-muted)] px-2.5 py-1
+        class="text-body-sm text-[var(--text-muted)] px-2.5 py-1
                rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
         onclick={() => navigate("/settings")}
       >
         Cancel
       </button>
       <button
-        class="text-[0.8125rem] font-medium text-[var(--accent-text)]
+        class="text-body-sm font-medium text-[var(--accent-text)]
                bg-[var(--accent)] px-2.5 py-1 rounded-md
                hover:bg-[var(--accent-hover)] transition-colors
                disabled:opacity-40 disabled:cursor-not-allowed"

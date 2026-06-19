@@ -276,14 +276,14 @@
   <div class="flex items-center gap-3 px-6 py-2 w-full">
     <div class="flex items-center gap-1.5 shrink-0">
       <button
-        class="text-[0.8125rem] font-mono font-medium text-[var(--text-muted)]
+        class="text-body-sm font-mono font-medium text-[var(--text-muted)]
                hover:text-[var(--text)] transition-colors"
         onclick={() => navigate(`/${projectIdentifier}/overview`)}
       >
         {projectIdentifier}
       </button>
       <ChevronRight size={12} class="text-[var(--text-faint)]" />
-      <span class="text-[0.8125rem] font-medium text-[var(--text)]">
+      <span class="text-body-sm font-medium text-[var(--text)]">
         Activity
       </span>
       {#if !loading}
@@ -332,13 +332,13 @@
     {:else if error}
       <ErrorState title="Couldn't load activity" message={error}>
         <button
-          class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+          class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
           onclick={() => loadProject(projectIdentifier)}
         >
           Try again
         </button>
         <button
-          class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+          class="text-body-sm text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
           onclick={() => navigate(`/${projectIdentifier}/overview`)}
         >
           Project overview
@@ -348,7 +348,7 @@
       <div class="flex flex-col items-center py-20 gap-3 px-6 max-w-[480px] mx-auto text-center">
         <History size={32} class="text-[var(--text-faint)]" />
         <p class="text-[0.9375rem] text-[var(--text-muted)]">No activity yet</p>
-        <p class="text-[0.8125rem] text-[var(--text-faint)] leading-relaxed">
+        <p class="text-body-sm text-[var(--text-faint)] leading-relaxed">
           Every change in this project lands here — who did it, what
           changed, and whether it came through the web UI, an agent over
           MCP, the API, or the CLI.
@@ -395,7 +395,7 @@
                   >
                     {@render entityIcon(a.entity_type, 14)}
 
-                    <div class="flex-1 min-w-0 text-[0.8125rem] leading-relaxed text-[var(--text-muted)] truncate">
+                    <div class="flex-1 min-w-0 text-body-sm leading-relaxed text-[var(--text-muted)] truncate">
                       <span class="font-medium text-[var(--text)]">{actorName(a)}</span>
                       {#if a.actor_is_bot}
                         <span
@@ -482,7 +482,7 @@
                           <p class="text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-1">
                             When
                           </p>
-                          <p class="text-[0.8125rem] text-[var(--text)] m-0">
+                          <p class="text-body-sm text-[var(--text)] m-0">
                             {formatDate(a.ts)}
                           </p>
                           <p class="text-micro font-mono text-[var(--text-faint)] m-0 mt-0.5">
@@ -495,7 +495,7 @@
                           <p class="text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-1">
                             Who
                           </p>
-                          <p class="text-[0.8125rem] text-[var(--text)] m-0">
+                          <p class="text-body-sm text-[var(--text)] m-0">
                             {actorName(a)}
                             {#if a.actor_username && a.actor_display_name && a.actor_username !== a.actor_display_name}
                               <span class="text-[var(--text-faint)]">({a.actor_username})</span>
@@ -525,7 +525,7 @@
                           <p class="text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-1">
                             What
                           </p>
-                          <p class="text-[0.8125rem] text-[var(--text)] m-0 flex items-center gap-1.5 flex-wrap">
+                          <p class="text-body-sm text-[var(--text)] m-0 flex items-center gap-1.5 flex-wrap">
                             {@render entityIcon(a.entity_type, 13)}
                             <span class="capitalize">{a.entity_type}</span>
                             <span class="font-mono text-caption text-[var(--text-muted)]">
@@ -627,7 +627,7 @@
                   </span>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-1.5">
-                      <span class="text-[0.8125rem] text-[var(--text)] truncate font-medium">
+                      <span class="text-body-sm text-[var(--text)] truncate font-medium">
                         {name}
                       </span>
                       {#if s.is_bot}

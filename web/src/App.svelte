@@ -273,7 +273,7 @@
       message="We couldn't find that page. The link may be wrong, or it has moved."
     >
       <button
-        class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)]
+        class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)]
                px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
         onclick={() => navigate("/settings")}
       >
@@ -345,14 +345,14 @@
           message="An unexpected error interrupted this page. Trying again usually clears it."
         >
           <button
-            class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)]
+            class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)]
                    px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
             onclick={reset}
           >
             Try again
           </button>
           <button
-            class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)]
+            class="text-body-sm text-[var(--text-muted)] border border-[var(--border)]
                    px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
             onclick={() => location.reload()}
           >

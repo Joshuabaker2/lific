@@ -113,14 +113,14 @@
   <div class="flex items-center gap-3 px-6 py-2 w-full">
     <div class="flex items-center gap-1.5 shrink-0">
       <button
-        class="text-[0.8125rem] font-mono font-medium text-[var(--text-muted)]
+        class="text-body-sm font-mono font-medium text-[var(--text-muted)]
                hover:text-[var(--text)] transition-colors"
         onclick={() => navigate(`/${projectIdentifier}/overview`)}
       >
         {projectIdentifier}
       </button>
       <ChevronRight size={12} class="text-[var(--text-faint)]" />
-      <span class="text-[0.8125rem] font-medium text-[var(--text)]">Plans</span>
+      <span class="text-body-sm font-medium text-[var(--text)]">Plans</span>
       {#if !loading}
         <span class="ml-1 text-micro text-[var(--text-faint)] font-medium tabular-nums">
           {plans.length}
@@ -129,7 +129,7 @@
     </div>
     <div class="ml-auto flex items-center gap-1.5 shrink-0">
       <button
-        class="flex items-center gap-1 text-[0.8125rem] font-medium
+        class="flex items-center gap-1 text-body-sm font-medium
                text-[var(--btn-success-text)] bg-[var(--btn-success)]
                px-2.5 py-1 rounded-md hover:bg-[var(--btn-success-hover)]
                transition-colors focus:outline-none
@@ -152,13 +152,13 @@
     {:else if error}
       <ErrorState title="Couldn't load plans" message={error}>
         <button
-          class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+          class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
           onclick={() => loadData(projectIdentifier)}
         >
           Try again
         </button>
         <button
-          class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+          class="text-body-sm text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
           onclick={() => navigate(`/${projectIdentifier}/overview`)}
         >
           Project overview
@@ -180,7 +180,7 @@
               }}
             />
             <button
-              class="text-[0.8125rem] font-medium text-[var(--btn-success)] hover:underline disabled:opacity-50"
+              class="text-body-sm font-medium text-[var(--btn-success)] hover:underline disabled:opacity-50"
               disabled={createSaving || !createTitle.trim()}
               onclick={commitCreate}
             >
@@ -194,14 +194,14 @@
             <Mascot src="/LizzyWriting.png" nativeW={567} nativeH={562} />
             <div class="flex flex-col items-center gap-1.5">
               <p class="text-[1.0625rem] font-medium text-[var(--text)]">The drawing board's empty</p>
-              <p class="text-[0.8125rem] text-[var(--text-muted)] leading-relaxed">
+              <p class="text-body-sm text-[var(--text-muted)] leading-relaxed">
                 A plan breaks a goal into a tree of steps that survives across
                 sessions. Steps can mirror issues, so closing an issue checks
                 off its step.
               </p>
             </div>
             <button
-              class="flex items-center gap-1.5 mt-1 text-[0.8125rem] font-medium
+              class="flex items-center gap-1.5 mt-1 text-body-sm font-medium
                      text-[var(--btn-success-text)] bg-[var(--btn-success)]
                      px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)]
                      transition-colors"

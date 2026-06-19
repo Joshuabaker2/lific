@@ -20,7 +20,7 @@
 
 <button
   onclick={cycle}
-  class="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[0.8125rem]
+  class="inline-flex items-center gap-1.5 rounded px-2 py-1 text-body-sm
          text-[var(--text-muted)] transition-colors
          hover:text-[var(--text)] hover:bg-[var(--bg-subtle)]"
   title="Theme: {pref} ({resolved})"

@@ -44,7 +44,7 @@
 
   <!-- Title -->
   <h3
-    class="text-[0.8125rem] text-[var(--text)] leading-snug line-clamp-3
+    class="text-body-sm text-[var(--text)] leading-snug line-clamp-3
            {issue.status === 'done' || issue.status === 'cancelled'
       ? 'line-through text-[var(--text-muted)]'
       : ''}"

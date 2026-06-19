@@ -268,13 +268,13 @@
 {:else if error}
   <ErrorState title={`Couldn't load this ${deleteNounLabel}`} message={error}>
     <button
-      class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+      class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
       onclick={() => (onRetry ? onRetry() : location.reload())}
     >
       Try again
     </button>
     <button
-      class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+      class="text-body-sm text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
       onclick={() => navigate(backRoute)}
     >
       Back to {backLabel.toLowerCase()}
@@ -351,7 +351,7 @@
       <!-- Left zone: scope -->
       <div class="flex items-center gap-1.5 shrink-0">
         <button
-          class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]
+          class="flex items-center gap-1.5 text-body-sm text-[var(--text-muted)]
                  hover:text-[var(--text)] transition-colors rounded px-1.5 py-0.5
                  hover:bg-[var(--bg-subtle)]"
           onclick={() => navigate(backRoute)}
@@ -360,7 +360,7 @@
           {backLabel}
         </button>
         <span class="text-[var(--text-faint)]">/</span>
-        <span class="text-[0.8125rem] font-mono text-[var(--text-muted)]">
+        <span class="text-body-sm font-mono text-[var(--text-muted)]">
           {identifier}
         </span>
         {#if breadcrumbExtra}{@render breadcrumbExtra()}{/if}

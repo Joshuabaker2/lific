@@ -74,7 +74,7 @@
     >
       <button
         class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-               text-[0.8125rem] text-[var(--error)]
+               text-body-sm text-[var(--error)]
                hover:bg-[var(--error-bg)] transition-colors"
         onclick={() => { confirming = true; }}
       >
@@ -92,7 +92,7 @@
              rounded-md shadow-lg p-3"
       onclick={(e) => e.stopPropagation()}
     >
-      <p class="text-[0.8125rem] text-[var(--text)] mb-1 font-medium">
+      <p class="text-body-sm text-[var(--text)] mb-1 font-medium">
         Delete {label}?
       </p>
       <p class="text-caption text-[var(--text-muted)] mb-3">
@@ -100,7 +100,7 @@
       </p>
       <div class="flex items-center gap-2">
         <button
-          class="text-[0.8125rem] font-medium text-[var(--error-text)]
+          class="text-body-sm font-medium text-[var(--error-text)]
                  bg-[var(--error)] px-3 py-1.5 rounded-md
                  hover:opacity-90 transition-opacity
                  disabled:opacity-50 disabled:cursor-not-allowed"
@@ -110,7 +110,7 @@
           {deleting ? "Deleting..." : "Delete"}
         </button>
         <button
-          class="text-[0.8125rem] text-[var(--text-muted)] px-3 py-1.5
+          class="text-body-sm text-[var(--text-muted)] px-3 py-1.5
                  rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
           onclick={() => { confirming = false; menuOpen = false; }}
         >

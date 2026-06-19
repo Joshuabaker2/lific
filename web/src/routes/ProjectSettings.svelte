@@ -262,13 +262,13 @@
 {:else if !project}
   <ErrorState title="Couldn't load this project" message={error}>
     <button
-      class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+      class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
       onclick={() => loadAll(projectIdentifier)}
     >
       Try again
     </button>
     <button
-      class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+      class="text-body-sm text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
       onclick={() => navigate("/settings")}
     >
       Back to home
@@ -343,7 +343,7 @@
                 {#if project.description}
                   <span class="text-[0.875rem] text-[var(--text-muted)] leading-relaxed">{project.description}</span>
                 {:else}
-                  <span class="text-[0.8125rem] text-[var(--text-faint)] italic">Add a description…</span>
+                  <span class="text-body-sm text-[var(--text-faint)] italic">Add a description…</span>
                 {/if}
                 <Pencil size={12} class="inline ml-1 text-[var(--text-faint)] opacity-0 group-hover:opacity-100 transition-opacity align-baseline" />
               </button>
@@ -367,7 +367,7 @@
         <!-- ── NEEDS ATTENTION (the star) ───────────────── -->
         <section>
           <div class="flex items-baseline justify-between mb-3">
-            <h2 class="text-[0.8125rem] font-semibold text-[var(--text)]">Needs attention</h2>
+            <h2 class="text-body-sm font-semibold text-[var(--text)]">Needs attention</h2>
             {#if moreCount > 0}
               <button class="text-caption text-[var(--text-muted)] hover:text-[var(--text)] transition-colors flex items-center gap-1" onclick={gotoOpenIssues}>
                 +{moreCount} more open <ArrowRight size={11} />
@@ -380,7 +380,7 @@
               <span class="grid place-items-center size-8 rounded-full bg-[var(--success-bg)] text-[var(--success)]"><Check size={16} /></span>
               <div>
                 <p class="text-[0.875rem] text-[var(--text)]">Nothing needs attention</p>
-                <p class="text-[0.8125rem] text-[var(--text-faint)]">Everything open is fresh and on track.</p>
+                <p class="text-body-sm text-[var(--text-faint)]">Everything open is fresh and on track.</p>
               </div>
             </div>
           {:else}
@@ -421,14 +421,14 @@
         {#if activity.length > 0}
           <section>
             <div class="flex items-baseline justify-between mb-3">
-              <h2 class="text-[0.8125rem] font-semibold text-[var(--text)]">Recent activity</h2>
+              <h2 class="text-body-sm font-semibold text-[var(--text)]">Recent activity</h2>
               <button class="text-caption text-[var(--text-muted)] hover:text-[var(--text)] transition-colors flex items-center gap-1" onclick={() => navigate(`/${projectIdentifier}/activity`)}>
                 <History size={11} /> Full log
               </button>
             </div>
             <div class="flex flex-col gap-2.5">
               {#each activity.slice(0, 8) as a (a.id)}
-                <div class="flex items-start gap-2.5 text-[0.8125rem] leading-snug">
+                <div class="flex items-start gap-2.5 text-body-sm leading-snug">
                   <span class="size-1.5 rounded-full bg-[var(--text-faint)] mt-1.5 shrink-0"></span>
                   <p class="text-[var(--text-muted)]">
                     <span class="font-medium text-[var(--text)]">{actorName(a)}</span>
@@ -460,12 +460,12 @@
               <!-- Project lead -->
               <div class="flex items-center gap-3">
                 <div class="flex-1">
-                  <p class="text-[0.8125rem] font-medium text-[var(--text)]">Project lead</p>
+                  <p class="text-body-sm font-medium text-[var(--text)]">Project lead</p>
                   <p class="text-caption text-[var(--text-muted)]">Who owns this project.</p>
                 </div>
                 <select
                   bind:value={leadValue}
-                  class="text-[0.8125rem] rounded-md border border-[var(--border)] bg-[var(--surface)]
+                  class="text-body-sm rounded-md border border-[var(--border)] bg-[var(--surface)]
                          text-[var(--text)] px-2.5 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                 >
                   {#each leadOptions as o}
@@ -478,7 +478,7 @@
 
               <!-- Change identifier -->
               <div>
-                <p class="text-[0.8125rem] font-medium text-[var(--text)]">Change identifier</p>
+                <p class="text-body-sm font-medium text-[var(--text)]">Change identifier</p>
                 <p class="text-caption text-[var(--text-muted)] mt-0.5 mb-2 leading-relaxed">
                   Re-keys every issue, page, and plan. Existing references to <span class="font-mono">{project.identifier}-NNN</span>
                   written inside other issues/pages will no longer resolve. This cannot be undone automatically.
@@ -487,12 +487,12 @@
                   <input
                     bind:value={newIdent}
                     placeholder={project.identifier}
-                    class="w-[120px] px-2.5 py-1.5 text-[0.8125rem] font-mono uppercase rounded-md
+                    class="w-[120px] px-2.5 py-1.5 text-body-sm font-mono uppercase rounded-md
                            border border-[var(--border)] bg-[var(--surface)] text-[var(--text)]
                            outline-none focus-visible:ring-2 focus-visible:ring-[var(--error)]"
                   />
                   <button
-                    class="text-[0.8125rem] font-medium text-[var(--error-text)] bg-[var(--error)] px-3 py-1.5 rounded-md
+                    class="text-body-sm font-medium text-[var(--error-text)] bg-[var(--error)] px-3 py-1.5 rounded-md
                            hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                     disabled={renaming || !newIdent.trim() || newIdent.trim().toUpperCase() === project.identifier}
                     onclick={renameIdentifier}
@@ -507,10 +507,10 @@
 
               <!-- Delete -->
               <div>
-                <p class="text-[0.8125rem] font-medium text-[var(--text)]">Delete project</p>
+                <p class="text-body-sm font-medium text-[var(--text)]">Delete project</p>
                 {#if !showDeleteSection}
                   <button
-                    class="mt-2 text-[0.8125rem] text-[var(--error)] border border-[var(--error)] px-3 py-1.5 rounded-md hover:bg-[var(--error-bg)] transition-colors"
+                    class="mt-2 text-body-sm text-[var(--error)] border border-[var(--error)] px-3 py-1.5 rounded-md hover:bg-[var(--error-bg)] transition-colors"
                     onclick={() => { showDeleteSection = true; }}
                   >
                     Delete this project
@@ -524,18 +524,18 @@
                     <input
                       bind:value={deleteConfirmText}
                       placeholder={project.identifier}
-                      class="w-[140px] px-2.5 py-1.5 text-[0.8125rem] font-mono rounded-md border border-[var(--error)]
+                      class="w-[140px] px-2.5 py-1.5 text-body-sm font-mono rounded-md border border-[var(--error)]
                              bg-[var(--surface)] text-[var(--text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--error)]"
                     />
                     <button
-                      class="text-[0.8125rem] font-medium text-[var(--error-text)] bg-[var(--error)] px-3 py-1.5 rounded-md
+                      class="text-body-sm font-medium text-[var(--error-text)] bg-[var(--error)] px-3 py-1.5 rounded-md
                              hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                       disabled={!deleteReady || deleting}
                       onclick={handleDelete}
                     >
                       {deleting ? "Deleting…" : "Delete permanently"}
                     </button>
-                    <button class="text-[0.8125rem] text-[var(--text-muted)] px-2 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+                    <button class="text-body-sm text-[var(--text-muted)] px-2 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
                             onclick={() => { showDeleteSection = false; deleteConfirmText = ''; deleteError = ''; }}>
                       Cancel
                     </button>
@@ -558,17 +558,17 @@
     <div class="flex items-center gap-3 px-6 py-2 w-full">
       <div class="flex items-center gap-1.5 shrink-0">
         <button
-          class="text-[0.8125rem] font-mono font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+          class="text-body-sm font-mono font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
           onclick={() => navigate(`/${project!.identifier}/issues`)}
         >
           {project.identifier}
         </button>
         <ChevronRight size={12} class="text-[var(--text-faint)]" />
-        <span class="text-[0.8125rem] font-medium text-[var(--text)]">Overview</span>
+        <span class="text-body-sm font-medium text-[var(--text)]">Overview</span>
       </div>
       <div class="ml-auto flex items-center gap-2 shrink-0">
         {#if exportError}
-          <span class="text-[0.8125rem] text-[var(--error)] max-w-[min(280px,30vw)] truncate" title={exportError}>{exportError}</span>
+          <span class="text-body-sm text-[var(--error)] max-w-[min(280px,30vw)] truncate" title={exportError}>{exportError}</span>
         {/if}
         <button class="toolbar-pill" onclick={exportProject} disabled={exporting}>
           <Download size={14} />

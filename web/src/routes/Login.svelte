@@ -93,7 +93,7 @@
     <div aria-live="polite">
       {#if error}
         <div
-          class="flex items-start gap-2.5 text-[0.8125rem] text-[var(--error)]
+          class="flex items-start gap-2.5 text-body-sm text-[var(--error)]
                  bg-[var(--error-bg)] px-3.5 py-3 rounded-lg"
           role="alert"
         >

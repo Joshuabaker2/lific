@@ -243,7 +243,7 @@
       </div>
 
       {#if errorMsg}
-        <div class="mx-4 mb-2 text-[0.8125rem] text-[var(--error)] bg-[var(--error-bg,var(--bg-subtle))] rounded-md px-3 py-1.5">
+        <div class="mx-4 mb-2 text-body-sm text-[var(--error)] bg-[var(--error-bg,var(--bg-subtle))] rounded-md px-3 py-1.5">
           {errorMsg}
         </div>
       {/if}
@@ -251,7 +251,7 @@
       <!-- Results -->
       <div class="max-h-[360px] overflow-y-auto py-1.5" bind:this={listEl}>
         {#if hits.length === 0}
-          <p class="px-4 py-6 text-center text-[0.8125rem] text-[var(--text-faint)]">
+          <p class="px-4 py-6 text-center text-body-sm text-[var(--text-faint)]">
             {searching
               ? "Searching…"
               : query.trim()

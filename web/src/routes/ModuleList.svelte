@@ -220,14 +220,14 @@
     <!-- Breadcrumb: Project > Modules -->
     <div class="flex items-center gap-1.5 shrink-0">
       <button
-        class="text-[0.8125rem] font-mono font-medium text-[var(--text-muted)]
+        class="text-body-sm font-mono font-medium text-[var(--text-muted)]
                hover:text-[var(--text)] transition-colors"
         onclick={() => navigate(`/${projectIdentifier}/overview`)}
       >
         {projectIdentifier}
       </button>
       <ChevronRight size={12} class="text-[var(--text-faint)]" />
-      <span class="text-[0.8125rem] font-medium text-[var(--text)]">
+      <span class="text-body-sm font-medium text-[var(--text)]">
         Modules
       </span>
       {#if !loading}
@@ -243,7 +243,7 @@
     <!-- Right zone: action -->
     <div class="ml-auto flex items-center gap-1.5 shrink-0">
       <button
-        class="flex items-center gap-1 text-[0.8125rem] font-medium
+        class="flex items-center gap-1 text-body-sm font-medium
                text-[var(--btn-success-text)] bg-[var(--btn-success)]
                px-2.5 py-1 rounded-md hover:bg-[var(--btn-success-hover)]
                transition-colors focus:outline-none
@@ -269,13 +269,13 @@
     {:else if error}
       <ErrorState title="Couldn't load modules" message={error}>
         <button
-          class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+          class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
           onclick={() => loadData(projectIdentifier)}
         >
           Try again
         </button>
         <button
-          class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+          class="text-body-sm text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
           onclick={() => navigate(`/${projectIdentifier}/overview`)}
         >
           Project overview
@@ -288,13 +288,13 @@
         <Mascot src="/LizzySleep2.png" nativeW={1000} nativeH={420} scale={0.25} />
         <div class="flex flex-col items-center gap-1.5">
           <p class="text-[1.0625rem] font-medium text-[var(--text)]">No moving parts yet</p>
-          <p class="text-[0.8125rem] text-[var(--text-muted)] leading-relaxed">
+          <p class="text-body-sm text-[var(--text-muted)] leading-relaxed">
             Modules gather related issues into a single arc of work: a feature,
             a release, an effort. Spin one up to start organizing.
           </p>
         </div>
         <button
-          class="flex items-center gap-1.5 mt-1 text-[0.8125rem] font-medium
+          class="flex items-center gap-1.5 mt-1 text-body-sm font-medium
                  text-[var(--btn-success-text)] bg-[var(--btn-success)]
                  px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)]
                  transition-colors"
@@ -449,7 +449,7 @@
                         {/if}
                       </p>
                       {#if preview}
-                        <p class="text-[0.8125rem] text-[var(--text-faint)] line-clamp-2 mt-1.5 leading-snug">
+                        <p class="text-body-sm text-[var(--text-faint)] line-clamp-2 mt-1.5 leading-snug">
                           {preview}
                         </p>
                       {/if}

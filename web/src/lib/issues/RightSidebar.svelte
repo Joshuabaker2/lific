@@ -72,7 +72,7 @@
     {#each PRIORITIES as p}
       {#if stats.prio[p] > 0}
         <button
-          class="flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[0.8125rem]
+          class="flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-body-sm
                  transition-colors
                  {filterPriority === p
             ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.06)] font-medium'
@@ -99,7 +99,7 @@
     <div class="flex flex-col gap-0.5">
       {#each modules as m (m.id)}
         <button
-          class="flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[0.8125rem]
+          class="flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-body-sm
                  transition-colors
                  {filterModule === m.name
             ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.06)] font-medium'

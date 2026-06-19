@@ -1053,13 +1053,13 @@
     {:else if error}
       <ErrorState title="Couldn't load this board" message={error}>
         <button
-          class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+          class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
           onclick={() => loadProject(projectIdentifier)}
         >
           Try again
         </button>
         <button
-          class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+          class="text-body-sm text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
           onclick={() => navigate(`/${projectIdentifier}/overview`)}
         >
           Project overview
@@ -1192,7 +1192,7 @@
               {#each STATUSES as s, si}
                 <button
                   class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                         text-[0.8125rem] transition-colors capitalize
+                         text-body-sm transition-colors capitalize
                          {si === view.inlineCreateStatusIdx
                     ? 'text-[var(--accent)] bg-[var(--accent-subtle)] font-medium'
                     : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
@@ -1211,7 +1211,7 @@
           {/if}
         </div>
 
-        <span class="text-[0.8125rem] text-[var(--text-faint)] font-mono shrink-0 w-[72px]">
+        <span class="text-body-sm text-[var(--text-faint)] font-mono shrink-0 w-[72px]">
           {projectIdentifier}-...
         </span>
         <!-- svelte-ignore a11y_autofocus -->
@@ -1265,13 +1265,13 @@
     {:else if error}
       <ErrorState title="Couldn't load issues" message={error}>
         <button
-          class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+          class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
           onclick={() => loadProject(projectIdentifier)}
         >
           Try again
         </button>
         <button
-          class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+          class="text-body-sm text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
           onclick={() => navigate(`/${projectIdentifier}/overview`)}
         >
           Project overview
@@ -1287,7 +1287,7 @@
             No issues match your filters
           </p>
           <button
-            class="text-[0.8125rem] text-[var(--accent)]
+            class="text-body-sm text-[var(--accent)]
                    hover:underline transition-colors"
           onclick={() => view.clearFilters()}
           >
@@ -1308,7 +1308,7 @@
             </p>
           </div>
           <button
-            class="flex items-center gap-1.5 mt-1 text-[0.8125rem] font-medium
+            class="flex items-center gap-1.5 mt-1 text-body-sm font-medium
                    text-[var(--btn-success-text)] bg-[var(--btn-success)]
                    px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)]
                    transition-colors"

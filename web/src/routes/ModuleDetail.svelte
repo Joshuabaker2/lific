@@ -243,7 +243,7 @@
     <div class="flex items-center gap-3 px-6 py-2 w-full">
       <div class="flex items-center gap-1.5 shrink-0">
         <button
-          class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]
+          class="flex items-center gap-1.5 text-body-sm text-[var(--text-muted)]
                  hover:text-[var(--text)] transition-colors rounded px-1.5 py-0.5
                  hover:bg-[var(--bg-subtle)]"
           onclick={() => navigate(`/${projectIdentifier}/modules`)}
@@ -252,7 +252,7 @@
           Modules
         </button>
         <span class="text-[var(--text-faint)]">/</span>
-        <span class="text-[0.8125rem] font-medium text-[var(--text)] truncate max-w-[280px]">
+        <span class="text-body-sm font-medium text-[var(--text)] truncate max-w-[280px]">
           {mod.name}
         </span>
       </div>
@@ -277,7 +277,7 @@
 
         {#if editable}
           <button
-            class="inline-flex items-center gap-1 text-[0.8125rem] font-medium
+            class="inline-flex items-center gap-1 text-body-sm font-medium
                    text-[var(--btn-success-text)] bg-[var(--btn-success)]
                    px-2.5 py-1 rounded-md hover:bg-[var(--btn-success-hover)]
                    transition-colors focus:outline-none
@@ -313,13 +313,13 @@
 {:else if error}
   <ErrorState title="Couldn't load this module" message={error}>
     <button
-      class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+      class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
       onclick={() => loadModule(moduleId)}
     >
       Try again
     </button>
     <button
-      class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+      class="text-body-sm text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
       onclick={() => navigate(`/${projectIdentifier}/modules`)}
     >
       Back to modules
@@ -452,7 +452,7 @@
                 </p>
                 {#if editable}
                   <button
-                    class="flex items-center gap-1.5 text-[0.8125rem] font-medium
+                    class="flex items-center gap-1.5 text-body-sm font-medium
                            text-[var(--btn-success-text)] bg-[var(--btn-success)]
                            px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)]
                            transition-colors"
@@ -507,7 +507,7 @@
             </p>
             <div class="relative">
               <button
-                class="flex items-center gap-2 text-[0.8125rem] rounded-md
+                class="flex items-center gap-2 text-body-sm rounded-md
                        px-2 py-1 -mx-2 transition-colors w-full text-left
                        {editable ? 'hover:bg-[var(--bg-subtle)] cursor-pointer' : 'cursor-default'}"
                 onclick={(e) => {
@@ -533,7 +533,7 @@
                   {#each STATUSES as s}
                     <button
                       class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                             text-[0.8125rem] transition-colors
+                             text-body-sm transition-colors
                              {s.value === mod.status
                         ? 'text-[var(--accent)] bg-[var(--accent-subtle)]'
                         : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
@@ -556,7 +556,7 @@
               <p class="text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-0.5">
                 Created
               </p>
-              <p class="text-[0.8125rem] text-[var(--text-muted)] leading-snug m-0">
+              <p class="text-body-sm text-[var(--text-muted)] leading-snug m-0">
                 {formatDate(mod.created_at)}
               </p>
             </div>
@@ -564,7 +564,7 @@
               <p class="text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-0.5">
                 Updated
               </p>
-              <p class="text-[0.8125rem] text-[var(--text-muted)] leading-snug m-0">
+              <p class="text-body-sm text-[var(--text-muted)] leading-snug m-0">
                 {formatDate(mod.updated_at)}
               </p>
             </div>

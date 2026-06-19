@@ -139,7 +139,7 @@
 
 {#snippet topbarContent()}
   <div class="flex items-center gap-3 px-6 py-2 w-full">
-    <span class="text-[0.8125rem] font-medium text-[var(--text)]">Settings</span>
+    <span class="text-body-sm font-medium text-[var(--text)]">Settings</span>
   </div>
 {/snippet}
 
@@ -162,7 +162,7 @@
             Instance settings are visible to administrators of this instance.
           </p>
           <button
-            class="mt-5 text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)]
+            class="mt-5 text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)]
                    px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
             onclick={() => navigate("/settings")}
           >
@@ -209,7 +209,7 @@
                 <button
                   type="button"
                   aria-pressed={fSignups}
-                  class="flex items-center gap-2 px-4 py-2 rounded-lg text-[0.8125rem] font-semibold transition-all
+                  class="flex items-center gap-2 px-4 py-2 rounded-lg text-body-sm font-semibold transition-all
                          motion-safe:active:scale-[0.98]
                          {fSignups
                     ? 'bg-[var(--success-bg)] text-[var(--success)] shadow-[0_1px_2px_rgba(0,0,0,0.10)] ring-1 ring-[color-mix(in_oklab,var(--success)_38%,transparent)]'
@@ -222,7 +222,7 @@
                 <button
                   type="button"
                   aria-pressed={!fSignups}
-                  class="flex items-center gap-2 px-4 py-2 rounded-lg text-[0.8125rem] font-semibold transition-all
+                  class="flex items-center gap-2 px-4 py-2 rounded-lg text-body-sm font-semibold transition-all
                          motion-safe:active:scale-[0.98]
                          {!fSignups
                     ? 'bg-[color-mix(in_oklab,var(--warn)_15%,var(--bg))] text-[var(--warn-text)] shadow-[0_1px_2px_rgba(0,0,0,0.10)] ring-1 ring-[color-mix(in_oklab,var(--warn)_38%,transparent)]'
@@ -301,7 +301,7 @@
                 <button
                   type="button"
                   aria-pressed={!fAutoLogin}
-                  class="flex items-center gap-2 px-4 py-2 rounded-lg text-[0.8125rem] font-semibold transition-all
+                  class="flex items-center gap-2 px-4 py-2 rounded-lg text-body-sm font-semibold transition-all
                          motion-safe:active:scale-[0.98]
                          {!fAutoLogin
                     ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.10)] ring-1 ring-[var(--border)]'
@@ -314,7 +314,7 @@
                 <button
                   type="button"
                   aria-pressed={fAutoLogin}
-                  class="flex items-center gap-2 px-4 py-2 rounded-lg text-[0.8125rem] font-semibold transition-all
+                  class="flex items-center gap-2 px-4 py-2 rounded-lg text-body-sm font-semibold transition-all
                          motion-safe:active:scale-[0.98]
                          {fAutoLogin
                     ? 'bg-[color-mix(in_oklab,var(--warn)_15%,var(--bg))] text-[var(--warn-text)] shadow-[0_1px_2px_rgba(0,0,0,0.10)] ring-1 ring-[color-mix(in_oklab,var(--warn)_38%,transparent)]'
@@ -346,7 +346,7 @@
           {/if}
 
           <!-- Autosave status (no Save button — each field commits on change). -->
-          <div class="flex items-center gap-2 mt-5 h-5 text-[0.8125rem]" aria-live="polite">
+          <div class="flex items-center gap-2 mt-5 h-5 text-body-sm" aria-live="polite">
             {#if saving}
               <span class="inline-flex items-center gap-1.5 text-[var(--text-muted)]">
                 <span class="size-3 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)] animate-spin"></span>

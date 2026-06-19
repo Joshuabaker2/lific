@@ -329,7 +329,7 @@
              page list regardless of folder. -->
         {#if editable}
           <button
-            class="flex items-center gap-1.5 text-[0.8125rem] font-medium
+            class="flex items-center gap-1.5 text-body-sm font-medium
                    px-2 py-1 rounded-md border transition-colors
                    {page.pinned
               ? 'text-[var(--accent)] border-[var(--accent)] bg-[var(--accent-subtle)]'
@@ -354,14 +354,14 @@
           >
             {#snippet renderSelected(opt)}
               {@const meta = statusMeta(String(opt.value))}
-              <span class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text)]">
+              <span class="flex items-center gap-1.5 text-body-sm text-[var(--text)]">
                 <meta.icon size={13} class="shrink-0 text-[var(--text-muted)]" />
                 {meta.label}
               </span>
             {/snippet}
             {#snippet renderOption(opt, isSelected)}
               {@const meta = statusMeta(String(opt.value))}
-              <span class="flex items-center gap-2 text-[0.8125rem] {isSelected ? 'font-medium' : ''}">
+              <span class="flex items-center gap-2 text-body-sm {isSelected ? 'font-medium' : ''}">
                 <meta.icon size={13} class="shrink-0 {isSelected ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}" />
                 <span class="{isSelected ? 'text-[var(--accent)]' : 'text-[var(--text)]'}">{meta.label}</span>
               </span>
@@ -369,7 +369,7 @@
           </Select>
         {:else}
           {@const meta = statusMeta(page.status)}
-          <span class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]">
+          <span class="flex items-center gap-1.5 text-body-sm text-[var(--text-muted)]">
             <meta.icon size={13} class="shrink-0" />
             {meta.label}
           </span>
@@ -401,7 +401,7 @@
           <span class="block text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-0.5">
             Created
           </span>
-          <span class="text-[0.8125rem] text-[var(--text-muted)]">
+          <span class="text-body-sm text-[var(--text-muted)]">
             {formatDate(page.created_at)}
           </span>
         </div>
@@ -409,7 +409,7 @@
           <span class="block text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-0.5">
             Updated
           </span>
-          <span class="text-[0.8125rem] text-[var(--text-muted)]">
+          <span class="text-body-sm text-[var(--text-muted)]">
             {formatDate(page.updated_at)}
           </span>
         </div>

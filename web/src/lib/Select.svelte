@@ -95,7 +95,7 @@
       {@render renderSelected(selected)}
     {:else}
       <span
-        class="{sm ? 'text-[0.8125rem]' : 'text-[0.9375rem]'}
+        class="{sm ? 'text-body-sm' : 'text-[0.9375rem]'}
                {selected ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'}"
       >
         {selected?.label ?? placeholder}
@@ -131,7 +131,7 @@
               {@render renderOption(opt, isSelected)}
             {:else}
               <span
-                class="{sm ? 'text-[0.8125rem]' : 'text-[0.875rem]'}
+                class="{sm ? 'text-body-sm' : 'text-[0.875rem]'}
                        {isSelected ? 'text-[var(--accent)] font-medium' : 'text-[var(--text)]'}"
               >
                 {opt.label}

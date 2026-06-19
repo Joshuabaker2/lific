@@ -359,7 +359,7 @@
   {#snippet breadcrumbExtra()}
     {#if issue}
       <span class="text-[var(--text-faint)]">/</span>
-      <span class="flex items-center gap-1.5 text-[0.8125rem]">
+      <span class="flex items-center gap-1.5 text-body-sm">
         <StatusIcon status={issue.status} size={13} />
         <span class="capitalize" style="color: {statusCssColor(issue.status)}">
           {issue.status}
@@ -375,7 +375,7 @@
           {@render sidebarField("Status")}
           <div class="relative">
             <button
-              class="flex items-center gap-2 text-[0.8125rem] rounded-md
+              class="flex items-center gap-2 text-body-sm rounded-md
                      px-2 py-1 -mx-2 transition-colors w-full text-left
                      {editable ? 'hover:bg-[var(--bg-subtle)] cursor-pointer' : 'cursor-default'}"
               onclick={(e) => {
@@ -402,7 +402,7 @@
                 {#each STATUSES as s}
                   <button
                     class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                           text-[0.8125rem] transition-colors
+                           text-body-sm transition-colors
                            {s.value === issue.status
                       ? 'text-[var(--accent)] bg-[var(--accent-subtle)]'
                       : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
@@ -421,7 +421,7 @@
           {@render sidebarField("Priority")}
           <div class="relative">
             <button
-              class="flex items-center gap-2 flex-nowrap text-[0.8125rem] rounded-md
+              class="flex items-center gap-2 flex-nowrap text-body-sm rounded-md
                      px-2 py-1 -mx-2 transition-colors w-full text-left
                      {editable ? 'hover:bg-[var(--bg-subtle)] cursor-pointer' : 'cursor-default'}"
               onclick={(e) => {
@@ -450,7 +450,7 @@
                 {#each PRIORITIES as p}
                   <button
                     class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                           text-[0.8125rem] transition-colors
+                           text-body-sm transition-colors
                            {p.value === issue.priority
                       ? 'text-[var(--accent)] bg-[var(--accent-subtle)]'
                       : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
@@ -472,7 +472,7 @@
                  the module's detail page (LIF-121). -->
             <div class="flex items-center -mx-2">
               <button
-                class="flex items-center gap-2 text-[0.8125rem] rounded-md
+                class="flex items-center gap-2 text-body-sm rounded-md
                        px-2 py-1 transition-colors flex-1 text-left
                        {editable ? 'hover:bg-[var(--bg-subtle)] cursor-pointer' : 'cursor-default'}"
                 onclick={(e) => {
@@ -517,7 +517,7 @@
                 onkeydown={(e) => e.stopPropagation()}
               >
                 <button
-                  class="w-full px-3 py-1.5 text-left text-[0.8125rem]
+                  class="w-full px-3 py-1.5 text-left text-body-sm
                          text-[var(--text-faint)] hover:bg-[var(--bg-subtle)]
                          transition-colors"
                   onclick={() => setModule(null)}
@@ -527,7 +527,7 @@
                 {#each modules as mod}
                   <button
                     class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                           text-[0.8125rem] transition-colors
+                           text-body-sm transition-colors
                            {mod.id === issue.module_id
                       ? 'text-[var(--accent)] bg-[var(--accent-subtle)]'
                       : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
@@ -619,13 +619,13 @@
         <div class="issue-meta-dates">
           <div class="issue-meta-field">
             {@render sidebarField("Created")}
-            <p class="text-[0.8125rem] text-[var(--text-muted)] leading-snug m-0">
+            <p class="text-body-sm text-[var(--text-muted)] leading-snug m-0">
               {formatDate(issue.created_at)}
             </p>
           </div>
           <div class="issue-meta-field">
             {@render sidebarField("Updated")}
-            <p class="text-[0.8125rem] text-[var(--text-muted)] leading-snug m-0">
+            <p class="text-body-sm text-[var(--text-muted)] leading-snug m-0">
               {formatDate(issue.updated_at)}
             </p>
           </div>

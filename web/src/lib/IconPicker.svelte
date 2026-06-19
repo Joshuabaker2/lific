@@ -188,7 +188,7 @@
       <!-- Tabs -->
       <div class="flex border-b border-[var(--border)]">
         <button
-          class="flex-1 text-[0.8125rem] py-2 transition-colors
+          class="flex-1 text-body-sm py-2 transition-colors
                  {tab === 'icons'
             ? 'text-[var(--accent)] border-b-2 border-[var(--accent)] font-medium'
             : 'text-[var(--text-muted)] hover:text-[var(--text)]'}"
@@ -197,7 +197,7 @@
           Icons
         </button>
         <button
-          class="flex-1 text-[0.8125rem] py-2 transition-colors
+          class="flex-1 text-body-sm py-2 transition-colors
                  {tab === 'emoji'
             ? 'text-[var(--accent)] border-b-2 border-[var(--accent)] font-medium'
             : 'text-[var(--text-muted)] hover:text-[var(--text)]'}"
@@ -213,7 +213,7 @@
           type="text"
           bind:value={search}
           bind:this={searchEl}
-          class="w-full px-2.5 py-1.5 text-[0.8125rem] rounded-md
+          class="w-full px-2.5 py-1.5 text-body-sm rounded-md
                  border border-[var(--border)] bg-[var(--bg)]
                  text-[var(--text)] placeholder:text-[var(--text-faint)]
                  outline-none focus:border-[var(--accent)]"
@@ -230,7 +230,7 @@
       >
         {#if tab === "icons"}
           {#if filteredIcons.length === 0}
-            <p class="text-[0.8125rem] text-[var(--text-faint)] text-center py-4">
+            <p class="text-body-sm text-[var(--text-faint)] text-center py-4">
               No icons match "{search}"
             </p>
           {:else if iconVirt.needsVirt}
@@ -277,7 +277,7 @@
           {/if}
         {:else}
           {#if filteredEmojis.length === 0}
-            <p class="text-[0.8125rem] text-[var(--text-faint)] text-center py-4">
+            <p class="text-body-sm text-[var(--text-faint)] text-center py-4">
               No emojis match "{search}"
             </p>
           {:else if emojiVirt.needsVirt}
@@ -323,7 +323,7 @@
       {#if value}
         <div class="border-t border-[var(--border)] p-2">
           <button
-            class="w-full text-[0.8125rem] text-[var(--text-muted)] py-1.5
+            class="w-full text-body-sm text-[var(--text-muted)] py-1.5
                    rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
             onclick={() => select("")}
           >

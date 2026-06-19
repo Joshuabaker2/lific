@@ -83,7 +83,7 @@
         </span>
       {/each}
     {:else if !(editable && hideEmptyWhenEditable)}
-      <span class="text-[0.8125rem] text-[var(--text-faint)] {emptyItalic ? 'italic' : ''}">
+      <span class="text-body-sm text-[var(--text-faint)] {emptyItalic ? 'italic' : ''}">
         {emptyText}
       </span>
     {/if}
@@ -112,7 +112,7 @@
       onkeydown={(e) => e.stopPropagation()}
     >
       {#if all.length === 0}
-        <div class="px-3 py-2 text-[0.8125rem] text-[var(--text-faint)]">
+        <div class="px-3 py-2 text-body-sm text-[var(--text-faint)]">
           {emptyPickerText}
         </div>
       {:else}
@@ -120,7 +120,7 @@
           {@const isAttached = attached.includes(label.name)}
           <button
             class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                   text-[0.8125rem] transition-colors hover:bg-[var(--bg-subtle)]"
+                   text-body-sm transition-colors hover:bg-[var(--bg-subtle)]"
             onclick={() => onToggle(label.name)}
           >
             <span

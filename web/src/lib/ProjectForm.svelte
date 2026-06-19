@@ -85,7 +85,7 @@
   <div class="mb-8">
     <label
       for="project-name"
-      class="block text-[0.8125rem] font-medium text-[var(--text)] mb-2 w-fit"
+      class="block text-body-sm font-medium text-[var(--text)] mb-2 w-fit"
     >
       Name
     </label>
@@ -108,7 +108,7 @@
     <div class="shrink-0">
       <label
         for="project-id"
-        class="block text-[0.8125rem] font-medium text-[var(--text)] mb-2 w-fit"
+        class="block text-body-sm font-medium text-[var(--text)] mb-2 w-fit"
       >
         Identifier
       </label>
@@ -130,7 +130,7 @@
         spellcheck="false"
         autocapitalize="characters"
       />
-      <p class="mt-1.5 text-[0.8125rem] text-[var(--text-faint)] w-fit">
+      <p class="mt-1.5 text-body-sm text-[var(--text-faint)] w-fit">
         {mode === "edit" ? "Issue prefix" : "Issues become"}
       </p>
       <span
@@ -144,7 +144,7 @@
 
     <div class="flex-1">
       <label
-        class="block text-[0.8125rem] font-medium text-[var(--text)] mb-2"
+        class="block text-body-sm font-medium text-[var(--text)] mb-2"
       >
         Lead
       </label>
@@ -159,7 +159,7 @@
 
     <div>
       <label
-        class="block text-[0.8125rem] font-medium text-[var(--text)] mb-2 w-fit"
+        class="block text-body-sm font-medium text-[var(--text)] mb-2 w-fit"
       >
         Icon
       </label>
@@ -172,7 +172,7 @@
     <div class="flex items-baseline gap-2 mb-2">
       <label
         for="project-desc"
-        class="text-[0.8125rem] font-medium text-[var(--text)]"
+        class="text-body-sm font-medium text-[var(--text)]"
       >
         Description
       </label>

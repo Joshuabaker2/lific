@@ -357,7 +357,7 @@
 {#snippet bodyContent()}
   {#if plan}
     {#if notice}
-      <div class="mb-3 text-[0.8125rem] text-[var(--accent)] bg-[var(--accent-subtle)] rounded-md px-3 py-1.5">
+      <div class="mb-3 text-body-sm text-[var(--accent)] bg-[var(--accent-subtle)] rounded-md px-3 py-1.5">
         {notice}
       </div>
     {/if}
@@ -381,7 +381,7 @@
       </div>
     {:else}
       <button
-        class="mt-3 flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)] hover:text-[var(--text)]"
+        class="mt-3 flex items-center gap-1.5 text-body-sm text-[var(--text-muted)] hover:text-[var(--text)]"
         onclick={() => startAddChild(-1)}
       >
         <Plus size={14} /> Add step
@@ -469,7 +469,7 @@
           <div class="mt-1 mb-1">
             {#if editingDescOf === step.id}
               <textarea
-                class="w-full bg-transparent outline-none text-[0.8125rem] leading-relaxed text-[var(--text)]
+                class="w-full bg-transparent outline-none text-body-sm leading-relaxed text-[var(--text)]
                        border border-[var(--border)] rounded-md p-2 resize-y min-h-[80px]"
                 bind:value={descDraft}
                 autofocus
@@ -486,7 +486,7 @@
                 <Markdown content={step.description} />
               </button>
             {:else}
-              <button class="text-[0.8125rem] italic text-[var(--text-faint)] hover:text-[var(--text-muted)]" onclick={() => startEditDesc(step)}>
+              <button class="text-body-sm italic text-[var(--text-faint)] hover:text-[var(--text-muted)]" onclick={() => startEditDesc(step)}>
                 Add details…
               </button>
             {/if}
@@ -524,7 +524,7 @@
         <p class="issue-meta-field-label">Status</p>
         <div class="relative">
           <button
-            class="flex items-center gap-2 text-[0.8125rem] rounded-md px-2 py-1 -mx-2 w-full text-left hover:bg-[var(--bg-subtle)]"
+            class="flex items-center gap-2 text-body-sm rounded-md px-2 py-1 -mx-2 w-full text-left hover:bg-[var(--bg-subtle)]"
             onclick={(e) => { e.stopPropagation(); statusOpen = !statusOpen; }}
           >
             <span class="size-2 rounded-full {plan.status === 'active' ? 'bg-[var(--accent)]' : plan.status === 'done' ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'}"></span>
@@ -535,7 +535,7 @@
                  role="presentation" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
               {#each STATUSES as s}
                 <button
-                  class="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[0.8125rem] capitalize
+                  class="w-full flex items-center gap-2 px-3 py-1.5 text-left text-body-sm capitalize
                          {s === plan.status ? 'text-[var(--accent)] bg-[var(--accent-subtle)]' : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
                   onclick={() => setStatus(s)}
                 >
@@ -563,13 +563,13 @@
         <p class="issue-meta-field-label">Anchor issue</p>
         <div class="flex items-center gap-1.5 -mx-2 px-2">
           {#if plan.anchor_identifier}
-            <button class="text-[0.8125rem] font-mono text-[var(--accent)] hover:underline flex items-center gap-1"
+            <button class="text-body-sm font-mono text-[var(--accent)] hover:underline flex items-center gap-1"
                     onclick={() => navigate(`/${projectIdentifier}/issues/${plan?.anchor_identifier}`)}>
               {plan.anchor_identifier}<ArrowUpRight size={12} />
             </button>
             <button class="ml-auto text-[var(--text-faint)] hover:text-[var(--text)] text-caption" onclick={setAnchor}>change</button>
           {:else}
-            <button class="text-[0.8125rem] text-[var(--text-faint)] hover:text-[var(--text)]" onclick={setAnchor}>Set anchor…</button>
+            <button class="text-body-sm text-[var(--text-faint)] hover:text-[var(--text)]" onclick={setAnchor}>Set anchor…</button>
           {/if}
         </div>
       </div>
@@ -579,11 +579,11 @@
       <div class="issue-meta-dates">
         <div class="issue-meta-field">
           <p class="issue-meta-field-label">Created</p>
-          <p class="text-[0.8125rem] text-[var(--text-muted)] leading-snug m-0">{formatDate(plan.created_at)}</p>
+          <p class="text-body-sm text-[var(--text-muted)] leading-snug m-0">{formatDate(plan.created_at)}</p>
         </div>
         <div class="issue-meta-field">
           <p class="issue-meta-field-label">Updated</p>
-          <p class="text-[0.8125rem] text-[var(--text-muted)] leading-snug m-0">{formatDate(plan.updated_at)}</p>
+          <p class="text-body-sm text-[var(--text-muted)] leading-snug m-0">{formatDate(plan.updated_at)}</p>
         </div>
       </div>
     </div>

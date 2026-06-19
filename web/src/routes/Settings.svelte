@@ -328,7 +328,7 @@
 
 {#snippet topbarContent()}
   <div class="flex items-center gap-3 px-6 py-2 w-full">
-    <span class="text-[0.8125rem] font-medium text-[var(--text)]">Settings</span>
+    <span class="text-body-sm font-medium text-[var(--text)]">Settings</span>
   </div>
 {/snippet}
 
@@ -350,7 +350,7 @@
           <h1 class="font-display text-[1.5rem] tracking-tight text-[var(--text)] leading-none truncate">
             {user.display_name || user.username}
           </h1>
-          <div class="flex items-center gap-2 mt-1.5 flex-wrap text-[0.8125rem]">
+          <div class="flex items-center gap-2 mt-1.5 flex-wrap text-body-sm">
             <span class="font-mono text-[var(--text-muted)]">@{user.username}</span>
             <span class="text-[var(--text-faint)]">·</span>
             <span class="text-[var(--text-muted)]">{user.email}</span>
@@ -368,12 +368,12 @@
           <Palette size={15} class="text-[var(--text-muted)]" />
           <h2 class="text-[0.9375rem] font-semibold text-[var(--text)]">Appearance</h2>
         </div>
-        <p class="text-[0.8125rem] text-[var(--text-muted)] mb-3.5">System follows your OS.</p>
+        <p class="text-body-sm text-[var(--text-muted)] mb-3.5">System follows your OS.</p>
         <div class="inline-flex p-0.5 rounded-lg bg-[var(--bg)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.10)]">
           {#each [["light", "Light", Sun], ["dark", "Dark", Moon], ["system", "System", Monitor]] as [val, label, Icon]}
             {@const IconComp = Icon as typeof Sun}
             <button
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[0.8125rem] font-medium transition-all
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-body-sm font-medium transition-all
                      {themePref === val
                 ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.12)]'
                 : 'text-[var(--text-muted)] hover:text-[var(--text)]'}"
@@ -423,7 +423,7 @@
               <div class="shrink-0 flex items-center gap-1.5">
                 {#if st === "connected" && bot}
                   <button
-                    class="text-[0.8125rem] text-[var(--text-muted)] hover:text-[var(--error)] px-2.5 py-1.5 rounded-md hover:bg-[var(--error-bg)] transition-colors disabled:opacity-50"
+                    class="text-body-sm text-[var(--text-muted)] hover:text-[var(--error)] px-2.5 py-1.5 rounded-md hover:bg-[var(--error-bg)] transition-colors disabled:opacity-50"
                     disabled={busyId === bot.id}
                     onclick={() => handleDisconnect(bot.id)}
                   >
@@ -431,14 +431,14 @@
                   </button>
                 {:else if st === "disconnected" && bot}
                   <button
-                    class="text-[0.8125rem] text-[var(--text-faint)] hover:text-[var(--error)] px-2 py-1.5 rounded-md hover:bg-[var(--error-bg)] transition-colors disabled:opacity-50"
+                    class="text-body-sm text-[var(--text-faint)] hover:text-[var(--error)] px-2 py-1.5 rounded-md hover:bg-[var(--error-bg)] transition-colors disabled:opacity-50"
                     disabled={busyId === bot.id}
                     onclick={() => handleRemove(bot.id)}
                   >
                     Remove
                   </button>
                   <button
-                    class="flex items-center gap-1.5 text-[0.8125rem] font-medium text-[var(--btn-success-text)]
+                    class="flex items-center gap-1.5 text-body-sm font-medium text-[var(--btn-success-text)]
                            bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
                     onclick={() => openConnect(template)}
                   >
@@ -446,7 +446,7 @@
                   </button>
                 {:else}
                   <button
-                    class="flex items-center gap-1.5 text-[0.8125rem] font-medium text-[var(--btn-success-text)]
+                    class="flex items-center gap-1.5 text-body-sm font-medium text-[var(--btn-success-text)]
                            bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors
                            motion-safe:active:scale-[0.97]"
                     onclick={() => openConnect(template)}
@@ -496,7 +496,7 @@
         {/if}
         <div class="flex items-center gap-3 mt-4">
           <button
-            class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md
+            class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md
                    hover:bg-[var(--btn-success-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             disabled={!hasProfileChanges || profileSaving}
             onclick={saveProfile}
@@ -504,7 +504,7 @@
             {profileSaving ? "Saving…" : "Save changes"}
           </button>
           {#if profileSavedAt}
-            <span class="inline-flex items-center gap-1 text-[0.8125rem] text-[var(--success)]" aria-live="polite"><Check size={13} /> Saved</span>
+            <span class="inline-flex items-center gap-1 text-body-sm text-[var(--success)]" aria-live="polite"><Check size={13} /> Saved</span>
           {/if}
         </div>
 
@@ -532,7 +532,7 @@
           {/if}
           <div class="flex items-center gap-3 mt-3">
             <button
-              class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md
+              class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md
                      hover:bg-[var(--btn-success-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               disabled={pwSaving || !curPw || !newPw}
               onclick={submitPassword}
@@ -540,7 +540,7 @@
               {pwSaving ? "Updating…" : "Change password"}
             </button>
             {#if pwSuccess}
-              <span class="inline-flex items-center gap-1 text-[0.8125rem] text-[var(--success)]"><Check size={13} /> Changed</span>
+              <span class="inline-flex items-center gap-1 text-body-sm text-[var(--success)]"><Check size={13} /> Changed</span>
             {/if}
           </div>
         </div>
@@ -548,12 +548,12 @@
         <!-- Sessions (sign out) — the very bottom of the page -->
         <div class="mt-8 pt-6 border-t border-[var(--border)]">
           <h3 class="text-[0.9375rem] font-semibold text-[var(--text)] mb-1">Sessions</h3>
-          <p class="text-[0.8125rem] text-[var(--text-muted)] mb-3.5 leading-relaxed">
+          <p class="text-body-sm text-[var(--text-muted)] mb-3.5 leading-relaxed">
             Sign out of this device, or revoke every active session everywhere.
           </p>
           <div class="flex flex-wrap items-center gap-2">
             <button
-              class="inline-flex items-center gap-1.5 text-[0.8125rem] font-medium text-[var(--text)]
+              class="inline-flex items-center gap-1.5 text-body-sm font-medium text-[var(--text)]
                      border border-[var(--border)] px-3 py-1.5 rounded-md
                      hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={logoutNow}
@@ -562,7 +562,7 @@
               Sign out
             </button>
             <button
-              class="inline-flex items-center gap-1.5 text-[0.8125rem] text-[var(--error)] border border-[var(--error)]
+              class="inline-flex items-center gap-1.5 text-body-sm text-[var(--error)] border border-[var(--error)]
                      px-3 py-1.5 rounded-md hover:bg-[var(--error-bg)] transition-colors disabled:opacity-50"
               disabled={signingOut}
               onclick={signOutAll}
@@ -629,7 +629,7 @@
             <div class="rounded-lg border border-[var(--btn-success)] bg-[color-mix(in_oklab,var(--btn-success)_8%,var(--bg))] overflow-hidden">
               <div class="flex items-center gap-2 px-3 py-2.5">
                 <code
-                  class="flex-1 min-w-0 text-[0.8125rem] font-mono text-[var(--text)] overflow-x-auto whitespace-nowrap leading-none py-0.5
+                  class="flex-1 min-w-0 text-body-sm font-mono text-[var(--text)] overflow-x-auto whitespace-nowrap leading-none py-0.5
                          {keyRevealed ? '' : 'select-none cursor-default'}"
                 >{displayKey}</code>
                 <button
@@ -642,7 +642,7 @@
                 </button>
               </div>
               <button
-                class="w-full flex items-center justify-center gap-1.5 py-2 text-[0.8125rem] font-semibold border-t border-[color-mix(in_oklab,var(--btn-success)_35%,transparent)] transition-colors
+                class="w-full flex items-center justify-center gap-1.5 py-2 text-body-sm font-semibold border-t border-[color-mix(in_oklab,var(--btn-success)_35%,transparent)] transition-colors
                        {keyCopied
                   ? 'bg-[var(--success-bg)] text-[var(--success)]'
                   : 'bg-[var(--btn-success)] text-[var(--btn-success-text)] hover:bg-[var(--btn-success-hover)]'}"
@@ -694,7 +694,7 @@
               <div class="flex flex-col gap-1.5 mb-2.5">
                 {#each connectTool.configNote as step, i (i)}
                   {#if step.text}
-                    <p class="text-[0.8125rem] text-[var(--text)] leading-snug">{step.text}</p>
+                    <p class="text-body-sm text-[var(--text)] leading-snug">{step.text}</p>
                   {/if}
                   {#if step.command}
                     <!-- Same shape as the API-key card: content row on top,
@@ -772,7 +772,7 @@
 
       <div class="flex justify-end px-5 py-3.5 border-t border-[var(--border)]">
         <button
-          class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-4 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+          class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-4 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
           onclick={closeConnect}
         >
           Done

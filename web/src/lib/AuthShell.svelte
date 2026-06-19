@@ -140,7 +140,7 @@
           <LogIn size={13} class="text-[var(--text-faint)]" />
         </div>
         <div class="flex-1 min-w-0">
-          <div class="text-[0.8125rem] text-[var(--text-muted)] truncate leading-tight">
+          <div class="text-body-sm text-[var(--text-muted)] truncate leading-tight">
             Not signed in
           </div>
           <div class="text-micro text-[var(--text-faint)] leading-tight mt-0.5">
@@ -159,16 +159,16 @@
       <div class="flex items-center gap-1.5 min-w-0">
         <img src="/logo.webp" alt="" width="20" height="20" class="rounded shrink-0 lg:hidden" />
         {#if instanceName}
-          <span class="hidden sm:inline text-[0.8125rem] font-medium text-[var(--text-muted)] truncate max-w-[16rem]" title={host}>
+          <span class="hidden sm:inline text-body-sm font-medium text-[var(--text-muted)] truncate max-w-[16rem]" title={host}>
             {instanceName}
           </span>
         {:else}
-          <span class="hidden sm:inline font-mono text-[0.8125rem] font-medium text-[var(--text-muted)] truncate max-w-[16rem]" title={host}>
+          <span class="hidden sm:inline font-mono text-body-sm font-medium text-[var(--text-muted)] truncate max-w-[16rem]" title={host}>
             {host}
           </span>
         {/if}
         <ChevronRight size={12} class="hidden sm:inline text-[var(--text-faint)] shrink-0" />
-        <span class="text-[0.8125rem] font-medium text-[var(--text)]">{crumb}</span>
+        <span class="text-body-sm font-medium text-[var(--text)]">{crumb}</span>
       </div>
 
       <div class="ml-auto flex items-center gap-2">
@@ -191,7 +191,7 @@
               </p>
 
               {#if loginMessage}
-                <div class="mt-5 text-[0.8125rem] text-[var(--text-muted)] leading-relaxed bg-[var(--bg-subtle)] border border-[var(--border)] rounded-lg px-3.5 py-2.5 max-w-[40ch] animate-reveal delay-100">
+                <div class="mt-5 text-body-sm text-[var(--text-muted)] leading-relaxed bg-[var(--bg-subtle)] border border-[var(--border)] rounded-lg px-3.5 py-2.5 max-w-[40ch] animate-reveal delay-100">
                   {loginMessage}
                 </div>
               {/if}

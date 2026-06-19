@@ -158,7 +158,7 @@
             aria-hidden="true"
           ></span>
 
-          <div class="text-[0.8125rem] leading-relaxed text-[var(--text-muted)]">
+          <div class="text-body-sm leading-relaxed text-[var(--text-muted)]">
             <!-- Actor -->
             <span class="font-medium text-[var(--text)]">{actorName(a)}</span>
             {#if a.actor_is_bot}

@@ -170,7 +170,7 @@
           onclick={() => palette?.openPalette()}
         >
           <Search size={14} class="shrink-0" />
-          <span class="flex-1 text-left text-[0.8125rem]">Jump to…</span>
+          <span class="flex-1 text-left text-body-sm">Jump to…</span>
           <kbd class="font-mono text-micro leading-none text-[var(--text-faint)]
                       border border-[var(--border)] rounded px-1 py-0.5">⌘K</kbd>
         </button>
@@ -201,7 +201,7 @@
                  expands its sub-nav (collapsed-until-focused UX preserved). -->
             <button
               class="group w-full flex items-center gap-1.5 pl-1.5 pr-2 py-1.5 rounded-md
-                     text-left text-[0.8125rem] transition-all
+                     text-left text-body-sm transition-all
                      {isProjectActive
                 ? 'text-[var(--text)] bg-[var(--bg-subtle)] font-medium'
                 : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
@@ -237,7 +237,7 @@
                   {@const active = isActive(href)}
                   <button
                     class="w-full flex items-center gap-2 px-2 py-1 rounded-md
-                           text-left text-[0.8125rem] transition-colors
+                           text-left text-body-sm transition-colors
                            {active
                       ? 'text-[var(--text)] bg-[var(--bg-subtle)] font-medium'
                       : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
@@ -259,9 +259,9 @@
           {/each}
         {:else}
           <div class="px-3 py-6">
-            <p class="text-[0.8125rem] text-[var(--text-faint)] mb-2">No projects yet.</p>
+            <p class="text-body-sm text-[var(--text-faint)] mb-2">No projects yet.</p>
             <button
-              class="text-[0.8125rem] text-[var(--accent)] hover:underline"
+              class="text-body-sm text-[var(--accent)] hover:underline"
               onclick={() => navigate("/projects/new")}
             >
               Create a project
@@ -289,7 +289,7 @@
             {initials(user.display_name || user.username)}
           </div>
           <div class="flex-1 min-w-0">
-            <div class="text-[0.8125rem] text-[var(--text)] truncate leading-tight">
+            <div class="text-body-sm text-[var(--text)] truncate leading-tight">
               {user.display_name || user.username}
             </div>
             <div class="text-micro text-[var(--text-faint)] flex items-center gap-1 leading-tight mt-0.5">

@@ -611,7 +611,7 @@
       {:else}
       <div class="max-h-[420px] overflow-y-auto py-1.5" bind:this={listEl}>
         {#if flatItems.length === 0}
-          <p class="px-4 py-6 text-center text-[0.8125rem] text-[var(--text-faint)]">
+          <p class="px-4 py-6 text-center text-body-sm text-[var(--text-faint)]">
             {searching
               ? "Searching…"
               : query.trim()

@@ -71,14 +71,14 @@
     <!-- Breadcrumb -->
     <div class="flex items-center gap-1.5">
       <button
-        class="text-[0.8125rem] font-mono font-medium text-[var(--text-muted)]
+        class="text-body-sm font-mono font-medium text-[var(--text-muted)]
                hover:text-[var(--text)] transition-colors"
         onclick={() => navigate(`/${projectIdentifier}/overview`)}
       >
         {projectIdentifier}
       </button>
       <ChevronRight size={12} class="text-[var(--text-faint)]" />
-      <span class="text-[0.8125rem] font-medium text-[var(--text)]">
+      <span class="text-body-sm font-medium text-[var(--text)]">
         {layout === "board" ? "Board" : "Issues"}
       </span>
     </div>
@@ -154,7 +154,7 @@
     <!-- Status -->
     <Select options={statusOptions} bind:value={view.filterStatus} placeholder="Status" size="sm" class="w-auto">
       {#snippet renderSelected(opt)}
-        <span class="flex items-center gap-1.5 text-[0.8125rem]">
+        <span class="flex items-center gap-1.5 text-body-sm">
           {#if opt.value}
             <StatusIcon status={String(opt.value)} size={13} />
             <span class="text-[var(--text)] capitalize">{opt.label}</span>
@@ -164,7 +164,7 @@
         </span>
       {/snippet}
       {#snippet renderOption(opt, isSelected)}
-        <span class="flex items-center gap-2 text-[0.8125rem] {isSelected ? 'font-medium' : ''}">
+        <span class="flex items-center gap-2 text-body-sm {isSelected ? 'font-medium' : ''}">
           {#if opt.value}
             <StatusIcon status={String(opt.value)} size={14} />
             <span class="{isSelected ? 'text-[var(--accent)]' : 'text-[var(--text)]'} capitalize">{opt.label}</span>
@@ -178,7 +178,7 @@
     <!-- Priority -->
     <Select options={priorityOptions} bind:value={view.filterPriority} placeholder="Priority" size="sm" class="w-auto">
       {#snippet renderSelected(opt)}
-        <span class="flex items-center gap-1.5 text-[0.8125rem]">
+        <span class="flex items-center gap-1.5 text-body-sm">
           {#if opt.value}
             <PriorityIcon priority={String(opt.value)} size={13} />
             <span class="capitalize" style="color: {priorityCssColor(String(opt.value))}">{opt.label}</span>
@@ -188,7 +188,7 @@
         </span>
       {/snippet}
       {#snippet renderOption(opt, isSelected)}
-        <span class="flex items-center gap-2 text-[0.8125rem] {isSelected ? 'font-medium' : ''}">
+        <span class="flex items-center gap-2 text-body-sm {isSelected ? 'font-medium' : ''}">
           {#if opt.value}
             <PriorityIcon priority={String(opt.value)} size={14} />
             <span class="{isSelected ? 'text-[var(--accent)]' : 'text-[var(--text)]'} capitalize">{opt.label}</span>
@@ -203,7 +203,7 @@
     {#if labels.length > 0}
       <Select options={labelOptions} bind:value={view.filterLabel} placeholder="Label" size="sm" class="w-auto">
         {#snippet renderSelected(opt)}
-          <span class="flex items-center gap-1.5 text-[0.8125rem]">
+          <span class="flex items-center gap-1.5 text-body-sm">
             {#if opt.value && opt.color}
               <span class="size-2.5 rounded-full shrink-0" style="background: {opt.color}"></span>
               <span class="text-[var(--text)]">{opt.label}</span>
@@ -213,7 +213,7 @@
           </span>
         {/snippet}
         {#snippet renderOption(opt, isSelected)}
-          <span class="flex items-center gap-2 text-[0.8125rem] {isSelected ? 'font-medium' : ''}">
+          <span class="flex items-center gap-2 text-body-sm {isSelected ? 'font-medium' : ''}">
             {#if opt.value && opt.color}
               <span class="size-2.5 rounded-full shrink-0" style="background: {opt.color}"></span>
               <span class="{isSelected ? 'text-[var(--accent)]' : 'text-[var(--text)]'}">{opt.label}</span>
@@ -229,7 +229,7 @@
     {#if modules.length > 0}
       <Select options={moduleOptions} bind:value={view.filterModule} placeholder="Module" size="sm" class="w-auto">
         {#snippet renderSelected(opt)}
-          <span class="flex items-center gap-1.5 text-[0.8125rem]">
+          <span class="flex items-center gap-1.5 text-body-sm">
             {#if opt.value}
               <Layers size={13} class="shrink-0 text-[var(--text-muted)]" />
               <span class="text-[var(--text)]">{opt.label}</span>
@@ -239,7 +239,7 @@
           </span>
         {/snippet}
         {#snippet renderOption(opt, isSelected)}
-          <span class="flex items-center gap-2 text-[0.8125rem] {isSelected ? 'font-medium' : ''}">
+          <span class="flex items-center gap-2 text-body-sm {isSelected ? 'font-medium' : ''}">
             {#if opt.value}
               <Layers size={14} class="shrink-0 text-[var(--text-muted)]" />
               <span class="{isSelected ? 'text-[var(--accent)]' : 'text-[var(--text)]'}">{opt.label}</span>
@@ -319,7 +319,7 @@
         <div
           class="absolute right-0 top-full mt-1.5 z-30 w-[220px]
                  bg-[var(--surface)] border border-[var(--border)]
-                 rounded-lg shadow-lg py-1.5 text-[0.8125rem]"
+                 rounded-lg shadow-lg py-1.5 text-body-sm"
           onclick={(e) => e.stopPropagation()}
         >
           <div class="px-3 pt-1 pb-1.5 text-[var(--text-faint)]
@@ -384,7 +384,7 @@
         <div
           class="absolute right-0 top-full mt-1.5 z-30 w-[224px]
                  bg-[var(--surface)] border border-[var(--border)]
-                 rounded-lg shadow-lg py-1.5 text-[0.8125rem]"
+                 rounded-lg shadow-lg py-1.5 text-body-sm"
           onclick={(e) => e.stopPropagation()}
         >
           <div class="px-3 pt-1 pb-1.5 text-[var(--text-faint)] text-micro uppercase tracking-widest font-semibold">
@@ -444,7 +444,7 @@
               (e.currentTarget as HTMLInputElement).blur();
             }
           }}
-          class="w-[200px] pl-7 pr-2 py-1 text-[0.8125rem] rounded-md
+          class="w-[200px] pl-7 pr-2 py-1 text-body-sm rounded-md
                  border border-[var(--border)] bg-[var(--surface)]
                  text-[var(--text)] placeholder:text-[var(--text-faint)]
                  focus:border-[var(--accent)]
@@ -490,7 +490,7 @@
                       uppercase tracking-widest font-semibold mb-2">
             Keyboard
           </div>
-          <ul class="space-y-1.5 text-[0.8125rem]">
+          <ul class="space-y-1.5 text-body-sm">
             {#each [
               ["C", "New issue"],
               ["S", "Cycle status"],
@@ -535,7 +535,7 @@
         <!-- Main segment: quick-create -->
         <button
           class="group flex items-center gap-1.5 pl-2.5 pr-2
-                 text-[0.8125rem] font-medium text-[var(--btn-success-text)]
+                 text-body-sm font-medium text-[var(--btn-success-text)]
                  bg-[var(--btn-success)] hover:bg-[var(--btn-success-hover)]
                  transition-colors focus:outline-none
                  motion-safe:active:scale-[0.97]"
@@ -598,7 +598,7 @@
           <button
             role="menuitem"
             class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left
-                   text-[0.8125rem] text-[var(--text)]
+                   text-body-sm text-[var(--text)]
                    hover:bg-[var(--bg-subtle)] transition-colors"
             onclick={() => {
               view.newMenuOpen = false;
@@ -618,7 +618,7 @@
           <button
             role="menuitem"
             class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left
-                   text-[0.8125rem] text-[var(--text)]
+                   text-body-sm text-[var(--text)]
                    hover:bg-[var(--bg-subtle)] transition-colors"
             onclick={() => {
               view.newMenuOpen = false;
@@ -640,7 +640,7 @@
             <button
               role="menuitem"
               class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left
-                     text-[0.8125rem] capitalize text-[var(--text)]
+                     text-body-sm capitalize text-[var(--text)]
                      hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={() => {
                 view.newMenuOpen = false;

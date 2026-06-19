@@ -167,7 +167,7 @@
         {#each STATUSES as s, si}
           <button
             class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                   text-[0.8125rem] transition-colors capitalize
+                   text-body-sm transition-colors capitalize
                    {si === statusPickerIdx
               ? 'text-[var(--accent)] bg-[var(--accent-subtle)] font-medium'
               : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
@@ -183,7 +183,7 @@
   </div>
 
   <!-- Identifier -->
-  <span class="text-[0.8125rem] text-[var(--text-faint)] font-mono shrink-0 w-[72px]">
+  <span class="text-body-sm text-[var(--text-faint)] font-mono shrink-0 w-[72px]">
     {issue.identifier}
   </span>
 
@@ -282,7 +282,7 @@
         {#each PRIORITIES as p}
           <button
             class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                   text-[0.8125rem] capitalize transition-colors
+                   text-body-sm capitalize transition-colors
                    {p === issue.priority
               ? 'text-[var(--accent)] bg-[var(--accent-subtle)] font-medium'
               : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"

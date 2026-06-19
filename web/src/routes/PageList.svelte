@@ -596,14 +596,14 @@
     <!-- Breadcrumb: Project > Pages -->
     <div class="flex items-center gap-1.5 shrink-0">
       <button
-        class="text-[0.8125rem] font-mono font-medium text-[var(--text-muted)]
+        class="text-body-sm font-mono font-medium text-[var(--text-muted)]
                hover:text-[var(--text)] transition-colors"
         onclick={() => navigate(`/${projectIdentifier}/overview`)}
       >
         {projectIdentifier}
       </button>
       <ChevronRight size={12} class="text-[var(--text-faint)]" />
-      <span class="text-[0.8125rem] font-medium text-[var(--text)]">
+      <span class="text-body-sm font-medium text-[var(--text)]">
         Pages
       </span>
       {#if !loading}
@@ -628,7 +628,7 @@
           class="w-auto"
         >
           {#snippet renderSelected(opt)}
-            <span class="flex items-center gap-1.5 text-[0.8125rem]">
+            <span class="flex items-center gap-1.5 text-body-sm">
               {#if opt.value && opt.color}
                 <span class="size-2.5 rounded-full shrink-0" style="background: {opt.color}"></span>
                 <span class="text-[var(--text)]">{opt.label}</span>
@@ -638,7 +638,7 @@
             </span>
           {/snippet}
           {#snippet renderOption(opt, isSelected)}
-            <span class="flex items-center gap-2 text-[0.8125rem] {isSelected ? 'font-medium' : ''}">
+            <span class="flex items-center gap-2 text-body-sm {isSelected ? 'font-medium' : ''}">
               {#if opt.value && opt.color}
                 <span class="size-2.5 rounded-full shrink-0" style="background: {opt.color}"></span>
                 <span class="{isSelected ? 'text-[var(--accent)]' : 'text-[var(--text)]'}">{opt.label}</span>
@@ -673,7 +673,7 @@
         class="w-auto"
       >
         {#snippet renderSelected(opt)}
-          <span class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text)]">
+          <span class="flex items-center gap-1.5 text-body-sm text-[var(--text)]">
             {#if opt.value && opt.value !== HIDE_ARCHIVED}
               {@const meta = statusMeta(String(opt.value))}
               <meta.icon size={13} class="shrink-0 text-[var(--text-muted)]" />
@@ -682,7 +682,7 @@
           </span>
         {/snippet}
         {#snippet renderOption(opt, isSelected)}
-          <span class="flex items-center gap-2 text-[0.8125rem] {isSelected ? 'font-medium' : ''}">
+          <span class="flex items-center gap-2 text-body-sm {isSelected ? 'font-medium' : ''}">
             {#if opt.value && opt.value !== HIDE_ARCHIVED}
               {@const meta = statusMeta(String(opt.value))}
               <meta.icon size={13} class="shrink-0 {isSelected ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}" />
@@ -716,7 +716,7 @@
                 (e.currentTarget as HTMLInputElement).blur();
               }
             }}
-            class="w-[200px] pl-7 pr-2 py-1 text-[0.8125rem] rounded-md
+            class="w-[200px] pl-7 pr-2 py-1 text-body-sm rounded-md
                    border border-[var(--border)] bg-[var(--surface)]
                    text-[var(--text)] placeholder:text-[var(--text-faint)]
                    focus:border-[var(--accent)]
@@ -747,7 +747,7 @@
       <div class="relative">
         <button
           class="group flex items-center gap-1.5 h-7 pl-2.5 pr-2
-                 text-[0.8125rem] font-medium text-[var(--btn-success-text)]
+                 text-body-sm font-medium text-[var(--btn-success-text)]
                  bg-[var(--btn-success)] hover:bg-[var(--btn-success-hover)]
                  rounded-md shadow-sm transition-colors focus:outline-none
                  focus-visible:ring-2 focus-visible:ring-[var(--btn-success)]
@@ -778,7 +778,7 @@
             <button
               role="menuitem"
               class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left
-                     text-[0.8125rem] text-[var(--text)]
+                     text-body-sm text-[var(--text)]
                      hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={() => startCreate("page", focusedFolderId)}
             >
@@ -788,7 +788,7 @@
             <button
               role="menuitem"
               class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left
-                     text-[0.8125rem] text-[var(--text)]
+                     text-body-sm text-[var(--text)]
                      hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={() => startCreate("folder", focusedFolderId)}
             >
@@ -801,7 +801,7 @@
             <button
               role="menuitem"
               class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left
-                     text-[0.8125rem] text-[var(--text)]
+                     text-body-sm text-[var(--text)]
                      hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={pasteAsNewPage}
             >
@@ -811,7 +811,7 @@
             <button
               role="menuitem"
               class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left
-                     text-[0.8125rem] text-[var(--text)]
+                     text-body-sm text-[var(--text)]
                      hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={quickNote}
             >
@@ -829,7 +829,7 @@
               <button
                 role="menuitem"
                 class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left
-                       text-[0.8125rem] text-[var(--text)]
+                       text-body-sm text-[var(--text)]
                        hover:bg-[var(--bg-subtle)] transition-colors"
                 onclick={() => startCreate("page", focusedFolderId, value as string)}
               >
@@ -873,13 +873,13 @@
     {:else if error}
       <ErrorState title="Couldn't load pages" message={error}>
         <button
-          class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+          class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
           onclick={() => loadData(projectIdentifier)}
         >
           Try again
         </button>
         <button
-          class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+          class="text-body-sm text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
           onclick={() => navigate(`/${projectIdentifier}/overview`)}
         >
           Project overview
@@ -890,13 +890,13 @@
         <Mascot src="/LizzyReading.png" nativeW={487} nativeH={714} />
         <div class="flex flex-col items-center gap-1.5">
           <p class="text-[1.0625rem] font-medium text-[var(--text)]">A blank page</p>
-          <p class="text-[0.8125rem] text-[var(--text-muted)] leading-relaxed">
+          <p class="text-body-sm text-[var(--text-muted)] leading-relaxed">
             Pages are your project's docs: specs, notes, decisions. Start the
             first one and give the ideas a home.
           </p>
         </div>
         <button
-          class="flex items-center gap-1.5 mt-1 text-[0.8125rem] font-medium
+          class="flex items-center gap-1.5 mt-1 text-body-sm font-medium
                  text-[var(--btn-success-text)] bg-[var(--btn-success)]
                  px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)]
                  transition-colors"
@@ -920,7 +920,7 @@
               No pages match "{searchQuery}"
             </p>
             <button
-              class="text-[0.8125rem] text-[var(--accent)] hover:underline"
+              class="text-body-sm text-[var(--accent)] hover:underline"
               onclick={() => { searchQuery = ""; searchExpanded = false; }}
             >
               Clear search
@@ -984,7 +984,7 @@
                 <!-- LIF-118: content snippet — only shown when content
                      was the winning signal, so title alone wouldn't
                      explain why this page surfaced. -->
-                <div class="text-[0.8125rem] text-[var(--text-muted)] truncate pl-[26px]">
+                <div class="text-body-sm text-[var(--text-muted)] truncate pl-[26px]">
                   {hit.snippet}
                 </div>
               {/if}
@@ -996,7 +996,7 @@
       <div class="px-6 py-4">
         <!-- LIF-185: focus banner when a folder is focused from the sidebar. -->
         {#if focusedFolderId !== null}
-          <div class="flex items-center gap-1.5 mb-4 text-[0.8125rem]">
+          <div class="flex items-center gap-1.5 mb-4 text-body-sm">
             <button
               class="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
               onclick={() => focusFolder(null)}
@@ -1134,7 +1134,7 @@
       </p>
       <div class="flex flex-col gap-0.5">
         <button
-          class="flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[0.8125rem]
+          class="flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-body-sm
                  transition-colors
                  {focusedFolderId === null
             ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.06)] font-medium'
@@ -1148,7 +1148,7 @@
         {#each sidebarFolders as folder (folder.id)}
           {@const depth = folderDepth(folder)}
           <button
-            class="flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[0.8125rem]
+            class="flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-body-sm
                    transition-colors
                    {focusedFolderId === folder.id
               ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.06)] font-medium'
@@ -1332,7 +1332,7 @@
           {/if}
 
           <span
-            class="text-[0.8125rem] text-[var(--text-faint)] shrink-0 tabular-nums
+            class="text-body-sm text-[var(--text-faint)] shrink-0 tabular-nums
                    group-hover:text-[var(--text-muted)] transition-colors"
           >
             {formatRelative(page.updated_at)}

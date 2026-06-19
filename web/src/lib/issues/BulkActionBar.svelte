@@ -62,7 +62,7 @@
     in:fly={{ y: 8, duration: 180 }}
     onclick={(e) => e.stopPropagation()}
   >
-    <span class="text-[0.8125rem] font-medium text-[var(--text)] tabular-nums pr-1">
+    <span class="text-body-sm font-medium text-[var(--text)] tabular-nums pr-1">
       {selectedCount} selected
     </span>
     {#if bulkBusy}
@@ -74,7 +74,7 @@
 
     {#snippet bulkTrigger(menu: "status" | "priority" | "module" | "label", label: string)}
       <button
-        class="text-[0.8125rem] px-2 py-1 rounded-md transition-colors
+        class="text-body-sm px-2 py-1 rounded-md transition-colors
                disabled:opacity-50 disabled:cursor-not-allowed
                {bulkMenu === menu
           ? 'text-[var(--text)] bg-[var(--bg-subtle)]'
@@ -101,7 +101,7 @@
           {#each STATUSES as s}
             <button
               class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                     text-[0.8125rem] text-[var(--text)] capitalize
+                     text-body-sm text-[var(--text)] capitalize
                      hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={() => onUpdate({ status: s })}
             >
@@ -125,7 +125,7 @@
           {#each PRIORITIES as p}
             <button
               class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                     text-[0.8125rem] text-[var(--text)] capitalize
+                     text-body-sm text-[var(--text)] capitalize
                      hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={() => onUpdate({ priority: p })}
             >
@@ -148,7 +148,7 @@
                    rounded-lg shadow-lg py-1.5 max-h-[40vh] overflow-y-auto"
           >
             <button
-              class="w-full px-3 py-1.5 text-left text-[0.8125rem]
+              class="w-full px-3 py-1.5 text-left text-body-sm
                      text-[var(--text-faint)] hover:bg-[var(--bg-subtle)]
                      transition-colors"
               onclick={() => onUpdate({ module_id: null })}
@@ -157,7 +157,7 @@
             </button>
             {#each modules as mod (mod.id)}
               <button
-                class="w-full px-3 py-1.5 text-left text-[0.8125rem]
+                class="w-full px-3 py-1.5 text-left text-body-sm
                        text-[var(--text)] hover:bg-[var(--bg-subtle)]
                        transition-colors truncate"
                 onclick={() => onUpdate({ module_id: mod.id })}
@@ -183,7 +183,7 @@
             {#each labels as lbl (lbl.id)}
               <button
                 class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                       text-[0.8125rem] text-[var(--text)]
+                       text-body-sm text-[var(--text)]
                        hover:bg-[var(--bg-subtle)] transition-colors"
                 onclick={() => onAddLabel(lbl.name)}
               >
@@ -222,7 +222,7 @@
                  bg-[var(--surface)] border border-[var(--border)]
                  rounded-lg shadow-lg p-3"
         >
-          <p class="text-[0.8125rem] font-medium text-[var(--text)] mb-1">
+          <p class="text-body-sm font-medium text-[var(--text)] mb-1">
             Delete {selectedCount} issue{selectedCount === 1 ? "" : "s"}?
           </p>
           <p class="text-caption text-[var(--text-muted)] mb-3">
@@ -230,7 +230,7 @@
           </p>
           <div class="flex items-center gap-2">
             <button
-              class="text-[0.8125rem] font-medium text-[var(--error-text)]
+              class="text-body-sm font-medium text-[var(--error-text)]
                      bg-[var(--error)] px-3 py-1.5 rounded-md
                      hover:opacity-90 transition-opacity
                      disabled:opacity-50 disabled:cursor-not-allowed"
@@ -240,7 +240,7 @@
               {bulkBusy ? "Deleting..." : "Delete"}
             </button>
             <button
-              class="text-[0.8125rem] text-[var(--text-muted)] px-3 py-1.5
+              class="text-body-sm text-[var(--text-muted)] px-3 py-1.5
                      rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
               onclick={() => { bulkMenu = null; }}
             >

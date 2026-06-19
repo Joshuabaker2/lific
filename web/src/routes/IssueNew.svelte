@@ -182,13 +182,13 @@
 {:else if !project}
   <ErrorState title="Couldn't load this project" message={error}>
     <button
-      class="text-[0.8125rem] font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
+      class="text-body-sm font-medium text-[var(--btn-success-text)] bg-[var(--btn-success)] px-3 py-1.5 rounded-md hover:bg-[var(--btn-success-hover)] transition-colors"
       onclick={() => loadProject(projectIdentifier)}
     >
       Try again
     </button>
     <button
-      class="text-[0.8125rem] text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
+      class="text-body-sm text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
       onclick={() => navigate(`/${projectIdentifier}/issues`)}
     >
       Back to issues
@@ -238,7 +238,7 @@
               {@render sidebarField("Status")}
               <div class="relative">
                 <button
-                  class="flex items-center gap-2 text-[0.8125rem] rounded-md
+                  class="flex items-center gap-2 text-body-sm rounded-md
                          px-2 py-1 -mx-2 transition-colors w-full text-left
                          hover:bg-[var(--bg-subtle)] cursor-pointer"
                   onclick={(e) => {
@@ -263,7 +263,7 @@
                     {#each STATUSES as s}
                       <button
                         class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                               text-[0.8125rem] transition-colors
+                               text-body-sm transition-colors
                                {s.value === status
                           ? 'text-[var(--accent)] bg-[var(--accent-subtle)]'
                           : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
@@ -283,7 +283,7 @@
               {@render sidebarField("Priority")}
               <div class="relative">
                 <button
-                  class="flex items-center gap-2 text-[0.8125rem] rounded-md
+                  class="flex items-center gap-2 text-body-sm rounded-md
                          px-2 py-1 -mx-2 transition-colors w-full text-left
                          hover:bg-[var(--bg-subtle)] cursor-pointer"
                   onclick={(e) => {
@@ -310,7 +310,7 @@
                     {#each PRIORITIES as p}
                       <button
                         class="w-full flex items-center gap-2 px-3 py-1.5 text-left
-                               text-[0.8125rem] transition-colors
+                               text-body-sm transition-colors
                                {p.value === priority
                           ? 'text-[var(--accent)] bg-[var(--accent-subtle)]'
                           : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
@@ -331,7 +331,7 @@
                 {@render sidebarField("Module")}
                 <div class="relative">
                   <button
-                    class="flex items-center gap-2 text-[0.8125rem] rounded-md
+                    class="flex items-center gap-2 text-body-sm rounded-md
                            px-2 py-1 -mx-2 transition-colors w-full text-left
                            hover:bg-[var(--bg-subtle)] cursor-pointer"
                     onclick={(e) => {
@@ -355,7 +355,7 @@
                       onclick={(e) => e.stopPropagation()}
                     >
                       <button
-                        class="w-full px-3 py-1.5 text-left text-[0.8125rem]
+                        class="w-full px-3 py-1.5 text-left text-body-sm
                                text-[var(--text-faint)] hover:bg-[var(--bg-subtle)]
                                transition-colors"
                         onclick={() => { moduleId = null; moduleOpen = false; }}
@@ -364,7 +364,7 @@
                       </button>
                       {#each modules as mod}
                         <button
-                          class="w-full px-3 py-1.5 text-left text-[0.8125rem]
+                          class="w-full px-3 py-1.5 text-left text-body-sm
                                  transition-colors
                                  {mod.id === moduleId
                             ? 'text-[var(--accent)] bg-[var(--accent-subtle)]'
@@ -408,7 +408,7 @@
   <div class="flex items-center gap-3 px-6 py-2 w-full">
     <div class="flex items-center gap-1.5 shrink-0">
       <button
-        class="flex items-center gap-1.5 text-[0.8125rem] text-[var(--text-muted)]
+        class="flex items-center gap-1.5 text-body-sm text-[var(--text-muted)]
                hover:text-[var(--text)] transition-colors rounded px-1.5 py-0.5
                hover:bg-[var(--bg-subtle)]"
         onclick={discard}
@@ -417,24 +417,24 @@
         Issues
       </button>
       <span class="text-[var(--text-faint)]">/</span>
-      <span class="text-[0.8125rem] text-[var(--text-muted)]">
+      <span class="text-body-sm text-[var(--text-muted)]">
         New issue
       </span>
     </div>
 
     <div class="ml-auto flex items-center gap-2 shrink-0">
       {#if error}
-        <span class="text-[0.8125rem] text-[var(--error)]">{error}</span>
+        <span class="text-body-sm text-[var(--error)]">{error}</span>
       {/if}
       <button
-        class="text-[0.8125rem] text-[var(--text-muted)] px-2.5 py-1
+        class="text-body-sm text-[var(--text-muted)] px-2.5 py-1
                rounded-md hover:bg-[var(--bg-subtle)] transition-colors"
         onclick={discard}
       >
         Discard
       </button>
       <button
-        class="text-[0.8125rem] font-medium text-[var(--accent-text)]
+        class="text-body-sm font-medium text-[var(--accent-text)]
                bg-[var(--accent)] px-2.5 py-1 rounded-md
                hover:bg-[var(--accent-hover)] transition-colors
                disabled:opacity-40 disabled:cursor-not-allowed"

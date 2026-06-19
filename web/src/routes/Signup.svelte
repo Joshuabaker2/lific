@@ -157,7 +157,7 @@
     <!-- Closed-signup state: no form. New accounts come from whoever runs the
          instance (admin is granted via the CLI, not web signup). -->
     <div class="flex flex-col gap-5">
-      <div class="flex items-start gap-2.5 text-[0.8125rem] text-[var(--text-muted)] bg-[var(--bg-subtle)] px-3.5 py-3 rounded-lg">
+      <div class="flex items-start gap-2.5 text-body-sm text-[var(--text-muted)] bg-[var(--bg-subtle)] px-3.5 py-3 rounded-lg">
         <Lock size={15} class="shrink-0 mt-0.5" />
         <span>
           New accounts on this instance are created by whoever runs it. Ask them to
@@ -180,7 +180,7 @@
       <div aria-live="polite">
         {#if error}
           <div
-            class="flex items-start gap-2.5 text-[0.8125rem] text-[var(--error)]
+            class="flex items-start gap-2.5 text-body-sm text-[var(--error)]
                    bg-[var(--error-bg)] px-3.5 py-3 rounded-lg"
             role="alert"
           >
@@ -364,7 +364,7 @@
           >
             <StatusIcon status={step.status} size={15} />
             <span
-              class="flex-1 text-[0.8125rem] {step.status === 'done'
+              class="flex-1 text-body-sm {step.status === 'done'
                 ? 'line-through text-[var(--text-muted)]'
                 : 'text-[var(--text)]'}"
             >
