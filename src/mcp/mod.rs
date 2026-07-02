@@ -140,6 +140,12 @@ impl ServerHandler for LificMcp {
         // (including Zed) skipped, going straight from 2025-03-26 to 2025-11-25.
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_protocol_version(ProtocolVersion::V_2025_03_26)
+            // Identify as lific, not rmcp's build-env default — this name is
+            // what connected clients (and `lific doctor`) display.
+            .with_server_info(rmcp::model::Implementation::new(
+                "lific",
+                env!("CARGO_PKG_VERSION"),
+            ))
             .with_instructions(SERVER_INSTRUCTIONS)
     }
 
@@ -321,6 +327,17 @@ mod tests {
         assert!(instructions.contains("modules"));
         assert!(instructions.contains("create_plan"));
         assert!(instructions.contains("pages for documentation"));
+    }
+
+    // Clients display serverInfo.name — it must say lific, not rmcp's
+    // build-env default.
+    #[test]
+    fn get_info_identifies_as_lific() {
+        let pool = crate::db::open_memory().expect("test db");
+        let mcp = LificMcp::new(pool);
+        let info = mcp.get_info();
+        assert_eq!(info.server_info.name, "lific");
+        assert_eq!(info.server_info.version, env!("CARGO_PKG_VERSION"));
     }
 
     // The appended convention guidance is unconditional per-session context

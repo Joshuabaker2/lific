@@ -1,3 +1,4 @@
+pub mod doctor;
 pub mod exec;
 pub mod term;
 
@@ -42,6 +43,21 @@ pub enum Command {
 
     /// Run MCP server over stdio (for AI assistants)
     Mcp,
+
+    /// Diagnose the local setup (config, database, backups, running server).
+    ///
+    /// Runs a series of checks and prints a green/yellow/red status per check
+    /// (pass/warn/fail), like `gh auth status` or `claude doctor`. Exits 0 when
+    /// nothing failed, 1 otherwise — so agents and CI can gate on it. Safe to
+    /// run whether or not a server is up; server-dependent checks are skipped
+    /// (not failed) when nothing is listening.
+    Doctor {
+        /// API key to test an authorized MCP round-trip. Falls back to the
+        /// LIFIC_API_KEY environment variable. Without a key, doctor still
+        /// verifies that auth is enforced and discovery is advertised.
+        #[arg(long, env = "LIFIC_API_KEY")]
+        key: Option<String>,
+    },
 
     /// Generate a default lific.toml config file
     Init,
@@ -769,6 +785,29 @@ mod tests {
     fn parse_init() {
         let cli = Cli::try_parse_from(["lific", "init"]).unwrap();
         assert!(matches!(cli.command, Command::Init));
+    }
+
+    #[test]
+    fn parse_doctor_no_key() {
+        // A bare `lific doctor` parses; key is absent unless LIFIC_API_KEY is
+        // set in the environment (clap env fallback). Guard against a stray
+        // env var polluting the assertion.
+        let cli = Cli::try_parse_from(["lific", "doctor"]).unwrap();
+        match cli.command {
+            Command::Doctor { key } => {
+                assert_eq!(key, std::env::var("LIFIC_API_KEY").ok());
+            }
+            _ => panic!("expected Doctor"),
+        }
+    }
+
+    #[test]
+    fn parse_doctor_with_key_flag() {
+        let cli = Cli::try_parse_from(["lific", "doctor", "--key", "lific_sk-live-abc"]).unwrap();
+        match cli.command {
+            Command::Doctor { key } => assert_eq!(key, Some("lific_sk-live-abc".into())),
+            _ => panic!("expected Doctor"),
+        }
     }
 
     #[test]

@@ -732,6 +732,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             server.await?;
         }
 
+        Command::Doctor { key } => {
+            // Diagnostics only: no tracing subscriber (keep stdout clean for the
+            // human table / JSON), and no DB open up front — the database check
+            // opens it itself and reports failure as a check, rather than
+            // aborting `doctor` before it can tell you why.
+            let json = cli::term::wants_json(cli.json);
+            cli::doctor::run(&cfg, cli.config.as_deref(), key, json)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+            return Ok(());
+        }
+
         Command::Mcp => {
             tracing_subscriber::fmt()
                 .with_env_filter(
