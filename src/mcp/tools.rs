@@ -5276,6 +5276,207 @@ mod authz_gating_tests {
         assert!(is_forbidden(&delete), "delete: {delete}");
     }
 
+    // ── Admin override: non-member admin reads/writes via MCP ────
+
+    #[test]
+    fn admin_non_member_can_read_and_write_via_mcp() {
+        // LIF-201 gap: `enforced_admin_non_member_allowed_all_levels`
+        // (authz.rs) exercises the require_role primitive directly, and
+        // `issue_create_gated_by_maintainer_role` above spot-checks the
+        // write side through a tool call; this adds the READ side through
+        // an actual tool call on a project the admin holds no membership
+        // row on at all.
+        let (m, admin, lead, _maintainer, _viewer, _non_member, _project_id) =
+            setup_membership_mcp();
+        let created = as_user(&lead, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "MEM".into(),
+                title: "Admin spot-check".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(created.starts_with("Created"), "got: {created}");
+
+        let read = as_user(&admin, || {
+            m.get_issue(Parameters(GetIssueInput { identifier: "MEM-1".into() }))
+        });
+        assert!(!is_forbidden(&read), "admin must read a project they're not a member of: {read}");
+        assert!(read.contains("Admin spot-check"), "got: {read}");
+
+        let write = as_user(&admin, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "MEM".into(),
+                title: "by admin".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(!is_forbidden(&write), "admin must write to a project they're not a member of: {write}");
+    }
+
+    // ── Token-backed lockout regression (the epic's landmine) ────
+    //
+    // Mirrors `api::authz_gating_tests::
+    // oauth_token_backed_member_succeeds_non_member_denied_when_enforced`
+    // on the MCP transport. Every other test in this module resolves
+    // identity via `as_user`, which calls `with_request_user(Some(user), ..)`
+    // directly — it never exercises the real bearer-token resolution path.
+    // This drives an actual MCP tool call through the SAME
+    // `require_api_key` middleware production wires in front of `/mcp`
+    // (`main.rs`), proving a token bound to a project member (maintainer)
+    // succeeds on read + write once `authz_enforced` is on, and a token
+    // bound to a non-member is still denied on both — the specific
+    // "default-deny bricks token-backed agents" failure mode LIF-DOC-7
+    // decision #9 exists to prevent.
+
+    #[test]
+    fn oauth_token_backed_member_succeeds_non_member_denied_when_enforced() {
+        use axum::body::Body;
+        use axum::extract::{Json as JsonExtract, Path as PathExtract, State};
+        use axum::http::{Request, StatusCode};
+        use axum::routing::{get, post};
+        use axum::{Extension, Router};
+        use rusqlite::params;
+        use sha2::{Digest, Sha256};
+        use tower::ServiceExt;
+
+        let (m, _admin, lead, maintainer, _viewer, non_member, _project_id) =
+            setup_membership_mcp();
+        let created = as_user(&lead, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "MEM".into(),
+                title: "Token-guarded".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(created.starts_with("Created"), "got: {created}");
+
+        fn insert_oauth_token(db: &crate::db::DbPool, suffix: &str, user_id: i64) -> String {
+            let token = format!("lific_at_test-{suffix}");
+            let hash: String =
+                Sha256::digest(token.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+            let expires = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+            let client_id = format!("client-{suffix}");
+            let conn = db.write().unwrap();
+            conn.execute(
+                "INSERT INTO oauth_clients (client_id, client_name, redirect_uris) VALUES (?1, 'Test', '[\"http://localhost\"]')",
+                params![client_id],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO oauth_tokens (access_token, client_id, expires_at, scope, user_id) VALUES (?1, ?2, ?3, 'mcp', ?4)",
+                params![hash, client_id, expires, user_id],
+            )
+            .unwrap();
+            token
+        }
+
+        let member_token = insert_oauth_token(&m.db, "member", maintainer.id);
+        let outsider_token = insert_oauth_token(&m.db, "outsider", non_member.id);
+
+        // Minimal router exercising the exact production wiring: an
+        // Extension<Option<AuthUser>> resolved by the real require_api_key
+        // middleware, threaded into with_request_user around a real tool
+        // call — mirrors main.rs's `/mcp` route handler (mcp::with_request_user
+        // wrapping `mcp_service.handle(request)`) with the transport swapped
+        // for a plain axum handler calling the tool method directly.
+        async fn get_issue_h(
+            State(mcp): State<LificMcp>,
+            Extension(auth_user): Extension<Option<models::AuthUser>>,
+            PathExtract(ident): PathExtract<String>,
+        ) -> String {
+            crate::mcp::with_request_user(auth_user, || async move {
+                mcp.get_issue(Parameters(GetIssueInput { identifier: ident }))
+            })
+            .await
+        }
+        async fn create_issue_h(
+            State(mcp): State<LificMcp>,
+            Extension(auth_user): Extension<Option<models::AuthUser>>,
+            JsonExtract(input): JsonExtract<CreateIssueInput>,
+        ) -> String {
+            crate::mcp::with_request_user(auth_user, || async move {
+                mcp.create_issue(Parameters(input))
+            })
+            .await
+        }
+
+        let auth_state = crate::auth::AuthState {
+            db: (*m.db).clone(),
+            manager: crate::auth::create_key_manager().unwrap(),
+            public_url: "https://example.com".into(),
+        };
+        let app = Router::new()
+            .route("/call/get_issue/{ident}", get(get_issue_h))
+            .route("/call/create_issue", post(create_issue_h))
+            .layer(axum::middleware::from_fn_with_state(auth_state, crate::auth::require_api_key))
+            .with_state(m.clone());
+
+        async fn call_get(app: Router, uri: String, token: &str) -> String {
+            let resp = app
+                .oneshot(
+                    Request::builder()
+                        .uri(uri)
+                        .header("authorization", format!("Bearer {token}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK, "dispatcher itself must not error");
+            let bytes = http_body_util::BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
+            String::from_utf8(bytes.to_vec()).unwrap()
+        }
+        async fn call_create(app: Router, body: serde_json::Value, token: &str) -> String {
+            let resp = app
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/call/create_issue")
+                        .header("content-type", "application/json")
+                        .header("authorization", format!("Bearer {token}"))
+                        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK, "dispatcher itself must not error");
+            let bytes = http_body_util::BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
+            String::from_utf8(bytes.to_vec()).unwrap()
+        }
+
+        let member_read = run(call_get(app.clone(), "/call/get_issue/MEM-1".into(), &member_token));
+        assert!(!is_forbidden(&member_read), "token-backed member must be able to read: {member_read}");
+
+        let member_write = run(call_create(
+            app.clone(),
+            serde_json::json!({"project": "MEM", "title": "by token member"}),
+            &member_token,
+        ));
+        assert!(!is_forbidden(&member_write), "token-backed member must be able to write: {member_write}");
+
+        let outsider_read = run(call_get(app.clone(), "/call/get_issue/MEM-1".into(), &outsider_token));
+        assert!(is_forbidden(&outsider_read), "token-backed non-member must be denied on read: {outsider_read}");
+
+        let outsider_write = run(call_create(
+            app.clone(),
+            serde_json::json!({"project": "MEM", "title": "by token outsider"}),
+            &outsider_token,
+        ));
+        assert!(is_forbidden(&outsider_write), "token-backed non-member must be denied on write: {outsider_write}");
+    }
+
     // ── Flag OFF smoke: non-member agent can still mutate ────────
 
     #[test]

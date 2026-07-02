@@ -104,6 +104,22 @@ impl LificMcp {
     }
 }
 
+#[cfg(test)]
+impl LificMcp {
+    /// LIF-201: expose the live `ToolRouter`'s tool names for the
+    /// enumeration-derived MCP completeness check (`authz_coverage_tests`).
+    /// Reads the same `list_all()` the production `list_tools` MCP handler
+    /// serves, so a tool that's registered but forgotten in the
+    /// classification manifest can't hide.
+    pub(crate) fn list_tool_names(&self) -> Vec<String> {
+        self.tool_router
+            .list_all()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect()
+    }
+}
+
 impl ServerHandler for LificMcp {
     fn get_info(&self) -> ServerInfo {
         // Pin to 2025-03-26: rmcp defaults to 2025-06-18 which many clients

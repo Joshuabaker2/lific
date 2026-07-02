@@ -2,6 +2,8 @@ mod actor;
 mod api;
 mod auth;
 mod authz;
+#[cfg(test)]
+mod authz_coverage_tests;
 mod backup;
 mod cli;
 mod config;

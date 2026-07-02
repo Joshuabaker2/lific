@@ -779,6 +779,57 @@ mod tests {
         assert!(require_workspace_admin(&pool, &None).is_err());
     }
 
+    // ── Backfill regression (LIF-201) ───────────────────────────
+    //
+    // `create_project_with_lead_seeds_lead_membership` (db/queries/members.rs)
+    // already proves the data-layer half: a project created with a lead
+    // gets exactly one `lead` membership row. This test proves the other
+    // half end-to-end through `require_role` itself — that the row seeded
+    // at *creation* time (not via a manual `upsert_member` like the other
+    // tests in this file use) is what `authz_enforced` actually reads once
+    // the flag flips on later, mirroring the real rollout sequence from
+    // LIF-DOC-7 ("ship schema + backfill first ... then turn on
+    // enforcement"). A second, non-member user must have no implicit
+    // access at any level — including read.
+
+    #[test]
+    fn enforced_mode_creation_seeded_lead_retains_access_second_user_has_none() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let lead = seed_user(&conn, "creator_lead", false);
+        let second = seed_user(&conn, "second_user", false);
+
+        // Flag starts off (default) at project-creation time — exactly the
+        // pre-rollout state. create_project's LIF-195 seeding still runs
+        // unconditionally.
+        let project = queries::create_project(
+            &conn,
+            &CreateProject {
+                name: "Backfill".into(),
+                identifier: "BAK".into(),
+                description: String::new(),
+                emoji: None,
+                lead_user_id: Some(lead.id),
+            },
+        )
+        .unwrap()
+        .id;
+
+        // Flip enforcement on *after* creation — the rollout sequence.
+        enable_enforcement(&conn);
+
+        for min in [Role::Viewer, Role::Maintainer, Role::Lead] {
+            assert!(
+                require_role_conn(&conn, &Some(lead.clone()), project, min).is_ok(),
+                "creation-time-seeded lead must retain {min} access once enforcement is on"
+            );
+            assert!(
+                require_role_conn(&conn, &Some(second.clone()), project, min).is_err(),
+                "a second user with no membership row must have no implicit access at {min}, including read"
+            );
+        }
+    }
+
     // ── Runtime toggle ────────────────────────────────────────────
 
     #[test]

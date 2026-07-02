@@ -1144,6 +1144,221 @@ mod authz_gating_tests {
         );
     }
 
+    // ── Admin override: non-member admin reads/writes/manages members ──
+
+    #[tokio::test]
+    async fn admin_non_member_can_read_write_and_manage_members_across_the_board() {
+        // LIF-201 gap: authz.rs's `enforced_admin_non_member_allowed_all_levels`
+        // exercises the require_role primitive directly; this spot-checks the
+        // same guarantee through the actual REST handlers the primitive
+        // gates, on a project the admin holds no membership row on at all.
+        let (db, admin, lead, _maintainer, _viewer, non_member, project_id) =
+            setup_membership_test();
+        let lead_app = app_as_user(db.clone(), &lead);
+        let issue = parse_json(
+            json_post(
+                &lead_app,
+                "/api/issues",
+                serde_json::json!({ "project_id": project_id, "title": "Admin spot-check" }),
+            )
+            .await,
+        )
+        .await;
+        let issue_id = issue["id"].as_i64().unwrap();
+
+        let admin_app = app_as_user(db.clone(), &admin);
+
+        // Read: project + issue, despite no membership row for admin.
+        assert_eq!(
+            json_get(&admin_app, &format!("/api/projects/{project_id}")).await.status(),
+            StatusCode::OK,
+            "admin must read a project they're not a member of"
+        );
+        assert_eq!(
+            json_get(&admin_app, &format!("/api/issues/{issue_id}")).await.status(),
+            StatusCode::OK
+        );
+
+        // Write: create + update.
+        assert_eq!(
+            json_post(&admin_app, "/api/issues", serde_json::json!({ "project_id": project_id, "title": "by admin" }))
+                .await
+                .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            json_put(&admin_app, &format!("/api/issues/{issue_id}"), serde_json::json!({"title": "renamed by admin"}))
+                .await
+                .status(),
+            StatusCode::OK
+        );
+
+        // Manage members: admin adds a member despite not being one itself
+        // (also covered at the members-endpoint level by
+        // `admin_can_manage_members_of_a_project_they_are_not_in` in
+        // api/members.rs — kept here too as the "everywhere" spot-check).
+        assert_eq!(
+            json_post(
+                &admin_app,
+                &format!("/api/projects/{project_id}/members"),
+                serde_json::json!({ "user_id": non_member.id, "role": "viewer" }),
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+    }
+
+    // ── Token-backed lockout regression (the epic's landmine) ─────
+    //
+    // LIF-DOC-7 decision #9 / LIF-204: OAuth tokens resolve to a real
+    // `AuthUser` via `require_api_key` (proven in isolation by
+    // `auth.rs`'s `oauth_token_rest_request_resolves_to_correct_auth_user`).
+    // Every test above this point proves the *role* matrix using
+    // `app_as_user`, which injects `Extension<Option<AuthUser>>` directly —
+    // it never exercises the real bearer-token → middleware → handler path.
+    // This test closes that gap at the layer closest to production: the
+    // actual `api::router` wrapped in the actual `require_api_key`
+    // middleware (mirroring `main.rs`'s `authed_routes`), fed a real OAuth
+    // bearer token. Flag ON: a token bound to a project member (maintainer)
+    // must succeed on read AND write — the specific "member gets bricked by
+    // default-deny" failure mode the design doc calls the lockout landmine.
+    // A token bound to a non-member must still be denied on both.
+
+    #[tokio::test]
+    async fn oauth_token_backed_member_succeeds_non_member_denied_when_enforced() {
+        use axum::http::{Request, StatusCode as SC};
+        use rusqlite::params;
+        use sha2::{Digest, Sha256};
+        use tower::ServiceExt;
+
+        let (db, _admin, _lead, maintainer, _viewer, non_member, project_id) =
+            setup_membership_test();
+
+        let issue_id = {
+            let conn = db.write().unwrap();
+            crate::db::queries::create_issue(
+                &conn,
+                &crate::db::models::CreateIssue {
+                    project_id,
+                    title: "Token-guarded".into(),
+                    description: String::new(),
+                    status: "todo".into(),
+                    priority: "medium".into(),
+                    module_id: None,
+                    start_date: None,
+                    target_date: None,
+                    labels: vec![],
+                },
+            )
+            .unwrap()
+            .id
+        };
+
+        fn insert_oauth_token(db: &crate::db::DbPool, suffix: &str, user_id: i64) -> String {
+            let token = format!("lific_at_test-{suffix}");
+            let hash: String =
+                Sha256::digest(token.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+            let expires = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+            let client_id = format!("client-{suffix}");
+            let conn = db.write().unwrap();
+            conn.execute(
+                "INSERT INTO oauth_clients (client_id, client_name, redirect_uris) VALUES (?1, 'Test', '[\"http://localhost\"]')",
+                params![client_id],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO oauth_tokens (access_token, client_id, expires_at, scope, user_id) VALUES (?1, ?2, ?3, 'mcp', ?4)",
+                params![hash, client_id, expires, user_id],
+            )
+            .unwrap();
+            token
+        }
+
+        let member_token = insert_oauth_token(&db, "member", maintainer.id);
+        let outsider_token = insert_oauth_token(&db, "outsider", non_member.id);
+
+        let auth_state = crate::auth::AuthState {
+            db: db.clone(),
+            manager: crate::auth::create_key_manager().unwrap(),
+            public_url: "https://example.com".into(),
+        };
+        // The real request path: api::router behind the real require_api_key
+        // middleware — not the app_as_user() Extension-injection shortcut.
+        let app = crate::api::router(db.clone(), &[])
+            .layer(axum::Extension(crate::config::AuthConfig { allow_signup: true, secure_cookies: false }))
+            .layer(axum::middleware::from_fn_with_state(auth_state, crate::auth::require_api_key));
+
+        async fn get_with_token(app: axum::Router, uri: String, token: &str) -> SC {
+            app.oneshot(
+                Request::builder()
+                    .uri(uri)
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status()
+        }
+
+        async fn post_with_token(
+            app: axum::Router,
+            uri: String,
+            body: serde_json::Value,
+            token: &str,
+        ) -> SC {
+            app.oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(uri)
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(axum::body::Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status()
+        }
+
+        // Token-backed MEMBER succeeds on read + write.
+        assert_eq!(
+            get_with_token(app.clone(), format!("/api/issues/{issue_id}"), &member_token).await,
+            SC::OK,
+            "token-backed member must be able to read"
+        );
+        assert_eq!(
+            post_with_token(
+                app.clone(),
+                "/api/issues".into(),
+                serde_json::json!({ "project_id": project_id, "title": "by token member" }),
+                &member_token
+            )
+            .await,
+            SC::OK,
+            "token-backed member must be able to write"
+        );
+
+        // Token-backed NON-MEMBER is denied on both.
+        assert_eq!(
+            get_with_token(app.clone(), format!("/api/issues/{issue_id}"), &outsider_token).await,
+            SC::FORBIDDEN,
+            "token-backed non-member must be denied on read"
+        );
+        assert_eq!(
+            post_with_token(
+                app.clone(),
+                "/api/issues".into(),
+                serde_json::json!({ "project_id": project_id, "title": "by token outsider" }),
+                &outsider_token
+            )
+            .await,
+            SC::FORBIDDEN,
+            "token-backed non-member must be denied on write"
+        );
+    }
+
     // ── Flag OFF: byte-for-byte regression proof ──────────────────
 
     #[tokio::test]
