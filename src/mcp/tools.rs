@@ -223,6 +223,157 @@ fn fmt_activity(a: &models::Activity) -> String {
     format!("[{}] {}{} via {} — {}", a.ts, who, agent, a.transport, detail)
 }
 
+// ── LIF-198: MCP authorization gates ────────────────────────────
+//
+// Same enforcement primitives as REST (LIF-197): `crate::authz`. But unlike
+// the REST wrappers in `api/mod.rs` / `api/pages.rs` / `api/resources.rs`
+// (which forward straight into `authz::require_structure_role` /
+// `require_project_delete_role` / `require_role(.., Lead)` and rely on
+// *those* functions' legacy branches to reproduce REST's pre-existing
+// behavior), MCP never had ANY project-scoped gate before this issue — every
+// tool was wide open. Those legacy branches reproduce specifically REST's
+// history (e.g. structure endpoints were Lead-gated pre-LIF-194, project
+// delete was admin-only), which is a *regression* if borrowed verbatim by
+// MCP: it would newly deny calls that MCP always allowed.
+//
+// So every MCP gate below checks `authz_enforced` itself first and
+// short-circuits to an unconditional allow while the flag is off —
+// reproducing MCP's actual historical behavior (fully open), not REST's.
+// Once `authz_enforced` is on, each gate delegates to the exact same
+// `crate::authz` primitive REST uses, so enforced-mode semantics are
+// identical across both transports. `mcp_gate` centralizes that flag check;
+// `LificError` denials translate to the `String` error type
+// `self.read`/`self.write` already use, so a denial renders as the same
+// `Error: Forbidden: <msg>` shape every other MCP error uses.
+fn mcp_gate(
+    db: &Arc<DbPool>,
+    check: impl FnOnce() -> Result<(), crate::error::LificError>,
+) -> Result<(), String> {
+    match crate::authz::authz_enforced(db) {
+        Ok(false) => Ok(()),
+        Ok(true) => check().map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Require the caller hold at least `min` role on `project_id`.
+fn require_role_mcp(db: &Arc<DbPool>, project_id: i64, min: models::Role) -> Result<(), String> {
+    mcp_gate(db, || {
+        crate::authz::require_role(db, &super::current_auth_user(), project_id, min)
+    })
+}
+
+/// Gate for module/label/folder ("structure") mutations — Maintainer once
+/// enforcement is on; a no-op (MCP's historical behavior) in legacy mode.
+fn require_structure_role_mcp(db: &Arc<DbPool>, project_id: i64) -> Result<(), String> {
+    mcp_gate(db, || {
+        crate::authz::require_structure_role(db, &super::current_auth_user(), project_id)
+    })
+}
+
+/// Gate for `delete(resource_type="project")` — Lead once enforcement is on
+/// (design decision #6); a no-op (MCP's historical behavior) in legacy mode.
+fn require_project_delete_role_mcp(db: &Arc<DbPool>, project_id: i64) -> Result<(), String> {
+    mcp_gate(db, || {
+        crate::authz::require_project_delete_role(db, &super::current_auth_user(), project_id)
+    })
+}
+
+/// Gate for workspace-level (project-less) pages/comments — admin-only once
+/// enforcement is on, a no-op in legacy mode either way (matches
+/// `authz::require_workspace_admin`'s own legacy branch, so `mcp_gate`'s
+/// short-circuit here is redundant but harmless).
+fn require_workspace_admin_mcp(db: &Arc<DbPool>) -> Result<(), String> {
+    mcp_gate(db, || {
+        crate::authz::require_workspace_admin(db, &super::current_auth_user())
+    })
+}
+
+/// Gate for a page/comment target whose `project_id` may be `None`
+/// (workspace-level): project-scoped falls to `require_role_mcp`,
+/// project-less falls to `require_workspace_admin_mcp`. Mirrors
+/// `api::pages::require_page_role` / `api::comments::require_comment_viewer`.
+fn require_page_role_mcp(
+    db: &Arc<DbPool>,
+    project_id: Option<i64>,
+    min: models::Role,
+) -> Result<(), String> {
+    match project_id {
+        Some(pid) => require_role_mcp(db, pid, min),
+        None => require_workspace_admin_mcp(db),
+    }
+}
+
+/// The cross-project read filter (LIF-197 scope item 2, MCP-side): a
+/// non-visible project's items are silently absent, never an error. Mirrors
+/// `api::filter_visible`.
+fn filter_visible<T>(
+    items: Vec<T>,
+    visible: &Option<std::collections::HashSet<i64>>,
+    project_id_of: impl Fn(&T) -> Option<i64>,
+) -> Vec<T> {
+    match visible {
+        None => items,
+        Some(ids) => items
+            .into_iter()
+            .filter(|it| project_id_of(it).is_some_and(|pid| ids.contains(&pid)))
+            .collect(),
+    }
+}
+
+fn visible_project_ids_mcp(
+    db: &Arc<DbPool>,
+) -> Result<Option<std::collections::HashSet<i64>>, String> {
+    crate::authz::visible_project_ids(db, &super::current_auth_user()).map_err(|e| e.to_string())
+}
+
+impl LificMcp {
+    /// Gate for comment read/create: Viewer (or Maintainer, for edges that
+    /// need it) on the comment parent's project, falling back to
+    /// workspace-admin for a page with no project. Mirrors
+    /// `api::comments::require_comment_viewer`.
+    fn require_comment_role_mcp(
+        &self,
+        parent: queries::comments::CommentParent,
+        min: models::Role,
+    ) -> Result<(), String> {
+        let project_id: Option<i64> = match parent {
+            queries::comments::CommentParent::Issue(id) => {
+                Some(self.read(|conn| queries::get_issue(conn, id))?.project_id)
+            }
+            queries::comments::CommentParent::Page(id) => {
+                self.read(|conn| queries::get_page(conn, id))?.project_id
+            }
+        };
+        require_page_role_mcp(&self.db, project_id, min)
+    }
+
+    /// LIF-198: if `step_id` has a linked issue, require `min` role on that
+    /// issue's own project too — the same "both sides" check `link_issues`
+    /// applies, since a step's issue can live in a different project than
+    /// the plan it belongs to.
+    fn require_step_issue_role_mcp(&self, step_id: i64, min: models::Role) -> Result<(), String> {
+        match self.read(|conn| queries::plans::step_issue_id(conn, step_id))? {
+            Some(issue_id) => {
+                let project_id = self.read(|conn| queries::get_issue(conn, issue_id))?.project_id;
+                require_role_mcp(&self.db, project_id, min)
+            }
+            None => Ok(()),
+        }
+    }
+
+    /// LIF-198: require `min` role on the project of the issue identified
+    /// by `ident` — used for `attach_issue` / `add_child_issue` cross-project
+    /// edges in `update_plan_step`, mirroring `link_issues`.
+    fn require_issue_ident_role_mcp(&self, ident: &str, min: models::Role) -> Result<(), String> {
+        let project_id = self.read(|conn| {
+            let iid = queries::resolve_identifier(conn, ident)?;
+            Ok(queries::get_issue(conn, iid)?.project_id)
+        })?;
+        require_role_mcp(&self.db, project_id, min)
+    }
+}
+
 #[tool_router]
 impl LificMcp {
     #[tool(description = "Search across all issues and pages by text")]
@@ -236,6 +387,14 @@ impl LificMcp {
         };
         let limit = input.limit.unwrap_or(20).max(1);
         let offset = input.offset.unwrap_or(0).max(0);
+        // Cross-project read (LIF-198 scope item 2): non-visible projects'
+        // hits are silently absent, never a 403 — even when `project` narrows
+        // the search to one project a non-member can't see, mirroring the
+        // REST /api/search handler.
+        let visible = match visible_project_ids_mcp(&self.db) {
+            Ok(v) => v,
+            Err(e) => return format!("Error: {e}"),
+        };
         // Over-fetch by one to detect whether more results exist beyond this page.
         match self.read(|conn| {
             queries::search(
@@ -250,8 +409,11 @@ impl LificMcp {
                 },
             )
         }) {
-            Ok(results) if results.is_empty() => "No results found.".into(),
-            Ok(mut results) => {
+            Ok(results) => {
+                let mut results = filter_visible(results, &visible, |r| r.project_id);
+                if results.is_empty() {
+                    return "No results found.".into();
+                }
                 let has_more = results.len() as i64 > limit;
                 if has_more {
                     results.truncate(limit as usize);
@@ -300,6 +462,33 @@ impl LificMcp {
             }
         };
 
+        // LIF-198: resolve the scope's project (Viewer gate); workspace
+        // pages (project_id None) fall back to admin-only.
+        let project_id: Option<i64> = match scope {
+            queries::activity::ActivityScope::Issue(id) => {
+                match self.read(|conn| queries::get_issue(conn, id)) {
+                    Ok(issue) => Some(issue.project_id),
+                    Err(e) => return format!("Error: {e}"),
+                }
+            }
+            queries::activity::ActivityScope::Page(id) => {
+                match self.read(|conn| queries::get_page(conn, id)) {
+                    Ok(page) => page.project_id,
+                    Err(e) => return format!("Error: {e}"),
+                }
+            }
+            queries::activity::ActivityScope::Plan(id) => {
+                match self.read(|conn| queries::plans::get_plan(conn, id)) {
+                    Ok(plan) => Some(plan.project_id),
+                    Err(e) => return format!("Error: {e}"),
+                }
+            }
+            queries::activity::ActivityScope::Project(id) => Some(id),
+        };
+        if let Err(e) = require_page_role_mcp(&self.db, project_id, models::Role::Viewer) {
+            return format!("Error: {e}");
+        }
+
         match self.read(|conn| {
             queries::activity::list_activity(conn, scope, Some(limit), Some(offset))
         }) {
@@ -326,6 +515,9 @@ impl LificMcp {
             Ok(id) => id,
             Err(e) => return format!("Error: {e}"),
         };
+        if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Viewer) {
+            return format!("Error: {e}");
+        }
         let module_id = match &input.module {
             Some(name) => match resolve_module(&self.db, pid, name) {
                 Ok(id) => Some(id),
@@ -388,6 +580,9 @@ impl LificMcp {
             Ok((issue, module_name))
         }) {
             Ok((issue, module_name)) => {
+                if let Err(e) = require_role_mcp(&self.db, issue.project_id, models::Role::Viewer) {
+                    return format!("Error: {e}");
+                }
                 let mut out = format!(
                     "{} — {}\nStatus: {} | Priority: {} | Module: {}\n",
                     issue.identifier, issue.title, issue.status, issue.priority, module_name
@@ -433,6 +628,16 @@ impl LificMcp {
 
     #[tool(description = "Export a single issue as markdown. Returns the markdown content.")]
     fn export_issue(&self, Parameters(input): Parameters<ExportIssueInput>) -> String {
+        let project_id = match self.read(|conn| {
+            let id = queries::resolve_identifier(conn, &input.identifier)?;
+            Ok(queries::get_issue(conn, id)?.project_id)
+        }) {
+            Ok(pid) => pid,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if let Err(e) = require_role_mcp(&self.db, project_id, models::Role::Viewer) {
+            return format!("Error: {e}");
+        }
         match self.read(|conn| crate::export::export_issue(conn, &input.identifier)) {
             Ok(bundle) => bundle
                 .files
@@ -450,6 +655,9 @@ impl LificMcp {
             Ok(id) => id,
             Err(e) => return format!("Error: {e}"),
         };
+        if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
         let module_id = match &input.module {
             Some(name) => match resolve_module(&self.db, pid, name) {
                 Ok(id) => Some(id),
@@ -482,8 +690,18 @@ impl LificMcp {
         description = "Update an existing issue by identifier. Only provided fields are changed."
     )]
     fn update_issue(&self, Parameters(input): Parameters<UpdateIssueInput>) -> String {
-        match self.write(|conn| {
+        let (id, project_id) = match self.read(|conn| {
             let id = queries::resolve_identifier(conn, &input.identifier)?;
+            let project_id = queries::get_issue(conn, id)?.project_id;
+            Ok((id, project_id))
+        }) {
+            Ok(v) => v,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if let Err(e) = require_role_mcp(&self.db, project_id, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
+        match self.write(|conn| {
             let module_id = match &input.module {
                 Some(name) => {
                     let issue = queries::get_issue(conn, id)?;
@@ -516,8 +734,18 @@ impl LificMcp {
         description = "Edit an issue by replacing an exact string. Targets the description field by default; pass field='title' to edit the title. Fails if old_string is not found or matches multiple places (unless replace_all=true). Cheaper than update_issue for small changes because the agent doesn't have to resend the whole field."
     )]
     fn edit_issue(&self, Parameters(input): Parameters<EditIssueInput>) -> String {
-        match self.write(|conn| {
+        let (id, project_id) = match self.read(|conn| {
             let id = queries::resolve_identifier(conn, &input.identifier)?;
+            let project_id = queries::get_issue(conn, id)?.project_id;
+            Ok((id, project_id))
+        }) {
+            Ok(v) => v,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if let Err(e) = require_role_mcp(&self.db, project_id, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
+        match self.write(|conn| {
             let issue = queries::get_issue(conn, id)?;
 
             let field = input.field.as_deref().unwrap_or("description");
@@ -579,6 +807,9 @@ impl LificMcp {
             Ok(id) => id,
             Err(e) => return format!("Error: {e}"),
         };
+        if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Viewer) {
+            return format!("Error: {e}");
+        }
         const BOARD_CAP: i64 = 500;
         match self.read(|conn| {
             queries::list_issues(
@@ -666,9 +897,25 @@ impl LificMcp {
 
     #[tool(description = "Link two issues with a relation: blocks, relates_to, or duplicate")]
     fn link_issues(&self, Parameters(input): Parameters<LinkIssuesInput>) -> String {
-        match self.write(|conn| {
+        let (source_id, target_id, source_project, target_project) = match self.read(|conn| {
             let source_id = queries::resolve_identifier(conn, &input.source)?;
             let target_id = queries::resolve_identifier(conn, &input.target)?;
+            let source_project = queries::get_issue(conn, source_id)?.project_id;
+            let target_project = queries::get_issue(conn, target_id)?.project_id;
+            Ok((source_id, target_id, source_project, target_project))
+        }) {
+            Ok(v) => v,
+            Err(e) => return format!("Error: {e}"),
+        };
+        // Cross-project relation: Maintainer required on BOTH sides (LIF-198
+        // scope item 3), even when source and target share a project.
+        if let Err(e) = require_role_mcp(&self.db, source_project, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
+        if let Err(e) = require_role_mcp(&self.db, target_project, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
+        match self.write(|conn| {
             queries::link_issues(conn, source_id, target_id, &input.relation_type)
         }) {
             Ok(()) => format!("{} {} {}", input.source, input.relation_type, input.target),
@@ -678,9 +925,23 @@ impl LificMcp {
 
     #[tool(description = "Remove a relation between two issues")]
     fn unlink_issues(&self, Parameters(input): Parameters<UnlinkIssuesInput>) -> String {
-        match self.write(|conn| {
+        let (source_id, target_id, source_project, target_project) = match self.read(|conn| {
             let source_id = queries::resolve_identifier(conn, &input.source)?;
             let target_id = queries::resolve_identifier(conn, &input.target)?;
+            let source_project = queries::get_issue(conn, source_id)?.project_id;
+            let target_project = queries::get_issue(conn, target_id)?.project_id;
+            Ok((source_id, target_id, source_project, target_project))
+        }) {
+            Ok(v) => v,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if let Err(e) = require_role_mcp(&self.db, source_project, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
+        if let Err(e) = require_role_mcp(&self.db, target_project, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
+        match self.write(|conn| {
             queries::unlink_issues(conn, source_id, target_id)
         }) {
             Ok(()) => format!("Unlinked {} and {}", input.source, input.target),
@@ -700,6 +961,9 @@ impl LificMcp {
             Ok((page, folder_name))
         }) {
             Ok((page, folder_name)) => {
+                if let Err(e) = require_page_role_mcp(&self.db, page.project_id, models::Role::Viewer) {
+                    return format!("Error: {e}");
+                }
                 let mut out = format!(
                     "{}{} — {}\nStatus: {} | Folder: {}\nCreated: {} | Updated: {}\n",
                     if page.pinned { "📌 " } else { "" },
@@ -724,6 +988,16 @@ impl LificMcp {
 
     #[tool(description = "Export a single page as markdown. Returns the markdown content.")]
     fn export_page(&self, Parameters(input): Parameters<ExportPageInput>) -> String {
+        let project_id = match self.read(|conn| {
+            let id = queries::resolve_page_identifier(conn, &input.identifier)?;
+            Ok(queries::get_page(conn, id)?.project_id)
+        }) {
+            Ok(pid) => pid,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if let Err(e) = require_page_role_mcp(&self.db, project_id, models::Role::Viewer) {
+            return format!("Error: {e}");
+        }
         match self.read(|conn| crate::export::export_page(conn, &input.identifier)) {
             Ok(bundle) => bundle
                 .files
@@ -737,6 +1011,13 @@ impl LificMcp {
 
     #[tool(description = "Export an entire project as markdown. Returns exported file paths.")]
     fn export_project(&self, Parameters(input): Parameters<ExportProjectInput>) -> String {
+        let pid = match resolve_project(&self.db, &input.project) {
+            Ok(id) => id,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Viewer) {
+            return format!("Error: {e}");
+        }
         match self.read(|conn| crate::export::export_project(conn, &input.project)) {
             Ok(bundle) => {
                 let mut out = format!("{} exported file(s):\n", bundle.files.len());
@@ -758,6 +1039,9 @@ impl LificMcp {
             },
             None => None,
         };
+        if let Err(e) = require_page_role_mcp(&self.db, project_id, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
         let folder_id = match (&input.folder, project_id) {
             (Some(name), Some(pid)) => match resolve_folder(&self.db, pid, name) {
                 Ok(id) => Some(id),
@@ -786,8 +1070,18 @@ impl LificMcp {
 
     #[tool(description = "Update a page by identifier. Only provided fields are changed.")]
     fn update_page(&self, Parameters(input): Parameters<UpdatePageInput>) -> String {
-        match self.write(|conn| {
+        let (id, project_id) = match self.read(|conn| {
             let id = queries::resolve_page_identifier(conn, &input.identifier)?;
+            let project_id = queries::get_page(conn, id)?.project_id;
+            Ok((id, project_id))
+        }) {
+            Ok(v) => v,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if let Err(e) = require_page_role_mcp(&self.db, project_id, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
+        match self.write(|conn| {
             let folder_id = match &input.folder {
                 Some(name) => {
                     let page = queries::get_page(conn, id)?;
@@ -823,8 +1117,18 @@ impl LificMcp {
         description = "Edit a page by replacing an exact string. Targets the content field by default; pass field='title' to edit the title. Fails if old_string is not found or matches multiple places (unless replace_all=true). Cheaper than update_page for small changes because the agent doesn't have to resend the whole field."
     )]
     fn edit_page(&self, Parameters(input): Parameters<EditPageInput>) -> String {
-        match self.write(|conn| {
+        let (id, project_id) = match self.read(|conn| {
             let id = queries::resolve_page_identifier(conn, &input.identifier)?;
+            let project_id = queries::get_page(conn, id)?.project_id;
+            Ok((id, project_id))
+        }) {
+            Ok(v) => v,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if let Err(e) = require_page_role_mcp(&self.db, project_id, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
+        match self.write(|conn| {
             let page = queries::get_page(conn, id)?;
 
             let field = input.field.as_deref().unwrap_or("content");
@@ -882,34 +1186,72 @@ impl LificMcp {
     )]
     fn delete(&self, Parameters(input): Parameters<DeleteInput>) -> String {
         match input.resource_type.as_str() {
-            "issue" => match self.write(|conn| {
-                let id = queries::resolve_identifier(conn, &input.identifier)?;
-                queries::delete_issue(conn, id)
-            }) {
-                Ok(()) => format!("Deleted issue {}", input.identifier),
-                Err(e) => format!("Error: {e}"),
-            },
-            "plan" => match self.write(|conn| {
-                let id = queries::plans::resolve_plan_identifier(conn, &input.identifier)?;
-                queries::plans::delete_plan(conn, id)
-            }) {
-                Ok(()) => format!("Deleted plan {}", input.identifier),
-                Err(e) => format!("Error: {e}"),
-            },
-            "page" => match self.write(|conn| {
-                let id = queries::resolve_page_identifier(conn, &input.identifier)?;
-                queries::delete_page(conn, id)
-            }) {
-                Ok(()) => format!("Deleted page {}", input.identifier),
-                Err(e) => format!("Error: {e}"),
-            },
-            "project" => match self.write(|conn| {
-                let id = queries::resolve_project_identifier(conn, &input.identifier)?;
-                queries::delete_project(conn, id)
-            }) {
-                Ok(()) => format!("Deleted project {}", input.identifier),
-                Err(e) => format!("Error: {e}"),
-            },
+            "issue" => {
+                let (id, project_id) = match self.read(|conn| {
+                    let id = queries::resolve_identifier(conn, &input.identifier)?;
+                    let project_id = queries::get_issue(conn, id)?.project_id;
+                    Ok((id, project_id))
+                }) {
+                    Ok(v) => v,
+                    Err(e) => return format!("Error: {e}"),
+                };
+                if let Err(e) = require_role_mcp(&self.db, project_id, models::Role::Maintainer) {
+                    return format!("Error: {e}");
+                }
+                match self.write(|conn| queries::delete_issue(conn, id)) {
+                    Ok(()) => format!("Deleted issue {}", input.identifier),
+                    Err(e) => format!("Error: {e}"),
+                }
+            }
+            "plan" => {
+                let (id, project_id) = match self.read(|conn| {
+                    let id = queries::plans::resolve_plan_identifier(conn, &input.identifier)?;
+                    let project_id = queries::plans::get_plan(conn, id)?.project_id;
+                    Ok((id, project_id))
+                }) {
+                    Ok(v) => v,
+                    Err(e) => return format!("Error: {e}"),
+                };
+                if let Err(e) = require_role_mcp(&self.db, project_id, models::Role::Maintainer) {
+                    return format!("Error: {e}");
+                }
+                match self.write(|conn| queries::plans::delete_plan(conn, id)) {
+                    Ok(()) => format!("Deleted plan {}", input.identifier),
+                    Err(e) => format!("Error: {e}"),
+                }
+            }
+            "page" => {
+                let (id, project_id) = match self.read(|conn| {
+                    let id = queries::resolve_page_identifier(conn, &input.identifier)?;
+                    let project_id = queries::get_page(conn, id)?.project_id;
+                    Ok((id, project_id))
+                }) {
+                    Ok(v) => v,
+                    Err(e) => return format!("Error: {e}"),
+                };
+                if let Err(e) = require_page_role_mcp(&self.db, project_id, models::Role::Maintainer) {
+                    return format!("Error: {e}");
+                }
+                match self.write(|conn| queries::delete_page(conn, id)) {
+                    Ok(()) => format!("Deleted page {}", input.identifier),
+                    Err(e) => format!("Error: {e}"),
+                }
+            }
+            "project" => {
+                let id = match self.read(|conn| {
+                    queries::resolve_project_identifier(conn, &input.identifier)
+                }) {
+                    Ok(id) => id,
+                    Err(e) => return format!("Error: {e}"),
+                };
+                if let Err(e) = require_project_delete_role_mcp(&self.db, id) {
+                    return format!("Error: {e}");
+                }
+                match self.write(|conn| queries::delete_project(conn, id)) {
+                    Ok(()) => format!("Deleted project {}", input.identifier),
+                    Err(e) => format!("Error: {e}"),
+                }
+            }
             "module" | "label" | "folder" => {
                 let Some(ref proj) = input.project else {
                     return format!(
@@ -921,6 +1263,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_structure_role_mcp(&self.db, pid) {
+                    return format!("Error: {e}");
+                }
                 let result = match input.resource_type.as_str() {
                     "module" => self.write(|conn| {
                         let id = queries::resolve_module_name(conn, pid, &input.identifier)?;
@@ -960,6 +1305,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Viewer) {
+                    return format!("Error: {e}");
+                }
                 let limit = input.limit.unwrap_or(50).clamp(1, 500);
                 let offset = input.offset.unwrap_or(0).max(0);
                 match self.read(|conn| {
@@ -992,20 +1340,28 @@ impl LificMcp {
                     Err(e) => format!("Error: {e}"),
                 }
             }
-            "project" => match self.read(queries::list_projects) {
-                Ok(ps) => {
-                    let mut out = format!("{} projects:\n", ps.len());
-                    for p in &ps {
-                        out.push_str(&format!("- {} | {}", p.identifier, p.name));
-                        if !p.description.is_empty() {
-                            out.push_str(&format!(" — {}", p.description));
+            // Cross-project list (LIF-198 scope item 2): filter, don't deny.
+            "project" => {
+                let visible = match visible_project_ids_mcp(&self.db) {
+                    Ok(v) => v,
+                    Err(e) => return format!("Error: {e}"),
+                };
+                match self.read(queries::list_projects) {
+                    Ok(ps) => {
+                        let ps = filter_visible(ps, &visible, |p| Some(p.id));
+                        let mut out = format!("{} projects:\n", ps.len());
+                        for p in &ps {
+                            out.push_str(&format!("- {} | {}", p.identifier, p.name));
+                            if !p.description.is_empty() {
+                                out.push_str(&format!(" — {}", p.description));
+                            }
+                            out.push('\n');
                         }
-                        out.push('\n');
+                        out
                     }
-                    out
+                    Err(e) => format!("Error: {e}"),
                 }
-                Err(e) => format!("Error: {e}"),
-            },
+            }
             "issue" => {
                 let Some(ref proj) = input.project else {
                     return "Error: project required".into();
@@ -1014,6 +1370,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Viewer) {
+                    return format!("Error: {e}");
+                }
                 let limit = input.limit.unwrap_or(100).max(1);
                 let offset = input.offset.unwrap_or(0).max(0);
                 match self.read(|conn| {
@@ -1054,6 +1413,21 @@ impl LificMcp {
                     },
                     None => None,
                 };
+                // Project-scoped: Viewer gate. Cross-project (no `project`
+                // filter): filter by visibility instead of denying (LIF-198
+                // scope item 2) — a workspace page (project_id None) is
+                // excluded for any non-admin once enforcement is on.
+                let visible = if let Some(pid) = project_id {
+                    if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Viewer) {
+                        return format!("Error: {e}");
+                    }
+                    None
+                } else {
+                    match visible_project_ids_mcp(&self.db) {
+                        Ok(v) => v,
+                        Err(e) => return format!("Error: {e}"),
+                    }
+                };
                 let folder_id = match (&input.folder, project_id) {
                     (Some(name), Some(pid)) => match resolve_folder(&self.db, pid, name) {
                         Ok(id) => Some(id),
@@ -1079,8 +1453,11 @@ impl LificMcp {
                     };
                     Ok((pages, folder_names))
                 }) {
-                    Ok((pages, _)) if pages.is_empty() => "No pages found.".into(),
                     Ok((pages, folder_names)) => {
+                        let pages = filter_visible(pages, &visible, |p| p.project_id);
+                        if pages.is_empty() {
+                            return "No pages found.".into();
+                        }
                         let mut out = format!("{} pages:\n", pages.len());
                         for p in &pages {
                             // Mirror `fmt_issue`: only suffix the label
@@ -1119,6 +1496,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Viewer) {
+                    return format!("Error: {e}");
+                }
                 match self.read(|conn| queries::list_modules(conn, pid)) {
                     Ok(ms) => {
                         let mut out = format!("{} modules:\n", ms.len());
@@ -1142,6 +1522,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Viewer) {
+                    return format!("Error: {e}");
+                }
                 match self.read(|conn| queries::list_labels(conn, pid)) {
                     Ok(ls) => {
                         let mut out = format!("{} labels:\n", ls.len());
@@ -1161,6 +1544,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Viewer) {
+                    return format!("Error: {e}");
+                }
                 match self.read(|conn| queries::list_folders(conn, pid)) {
                     Ok(fs) => {
                         let mut out = format!("{} folders:\n", fs.len());
@@ -1232,6 +1618,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Lead) {
+                    return format!("Error: {e}");
+                }
                 match self.write(|conn| {
                     queries::update_project(
                         conn,
@@ -1257,6 +1646,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_structure_role_mcp(&self.db, pid) {
+                    return format!("Error: {e}");
+                }
                 let Some(ref name) = input.name else {
                     return "Error: name required".into();
                 };
@@ -1284,6 +1676,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_structure_role_mcp(&self.db, pid) {
+                    return format!("Error: {e}");
+                }
                 let Some(ref current) = input.current_name else {
                     return "Error: current_name required to identify module".into();
                 };
@@ -1315,6 +1710,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_structure_role_mcp(&self.db, pid) {
+                    return format!("Error: {e}");
+                }
                 let Some(ref name) = input.name else {
                     return "Error: name required".into();
                 };
@@ -1340,6 +1738,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_structure_role_mcp(&self.db, pid) {
+                    return format!("Error: {e}");
+                }
                 let Some(ref current) = input.current_name else {
                     return "Error: current_name required to identify label".into();
                 };
@@ -1369,6 +1770,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_structure_role_mcp(&self.db, pid) {
+                    return format!("Error: {e}");
+                }
                 let Some(ref name) = input.name else {
                     return "Error: name required".into();
                 };
@@ -1394,6 +1798,9 @@ impl LificMcp {
                     Ok(id) => id,
                     Err(e) => return format!("Error: {e}"),
                 };
+                if let Err(e) = require_structure_role_mcp(&self.db, pid) {
+                    return format!("Error: {e}");
+                }
                 let Some(ref current) = input.current_name else {
                     return "Error: current_name required to identify folder".into();
                 };
@@ -1428,6 +1835,9 @@ impl LificMcp {
             Ok(p) => p,
             Err(e) => return format!("Error: {e}"),
         };
+        if let Err(e) = self.require_comment_role_mcp(parent, models::Role::Viewer) {
+            return format!("Error: {e}");
+        }
 
         // Resolve the authenticated user from the task-local set by the HTTP handler.
         // For stdio/local MCP sessions (no HTTP auth), fall back to the first admin user.
@@ -1467,6 +1877,9 @@ impl LificMcp {
             Ok(p) => p,
             Err(e) => return format!("Error: {e}"),
         };
+        if let Err(e) = self.require_comment_role_mcp(parent, models::Role::Viewer) {
+            return format!("Error: {e}");
+        }
 
         match self.read(|conn| {
             queries::comments::list_comments(
@@ -1501,6 +1914,9 @@ impl LificMcp {
             Ok(id) => id,
             Err(e) => return format!("Error: {e}"),
         };
+        if let Err(e) = require_role_mcp(&self.db, pid, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
         match self.write(|conn| {
             let anchor = match &input.anchor_issue {
                 Some(ident) => Some(queries::resolve_identifier(conn, ident)?),
@@ -1535,7 +1951,12 @@ impl LificMcp {
             let id = queries::plans::resolve_plan_identifier(conn, &input.plan)?;
             queries::plans::get_plan(conn, id)
         }) {
-            Ok(plan) => fmt_plan(&plan),
+            Ok(plan) => {
+                if let Err(e) = require_role_mcp(&self.db, plan.project_id, models::Role::Viewer) {
+                    return format!("Error: {e}");
+                }
+                fmt_plan(&plan)
+            }
             Err(e) => format!("Error: {e}"),
         }
     }
@@ -1545,6 +1966,16 @@ impl LificMcp {
     )]
     fn edit_plan_step(&self, Parameters(input): Parameters<EditPlanStepInput>) -> String {
         let field = input.field.clone().unwrap_or_else(|| "description".into());
+        let plan_project_id = match self.read(|conn| {
+            let plan_id = queries::plans::resolve_plan_identifier(conn, &input.plan)?;
+            Ok(queries::plans::get_plan(conn, plan_id)?.project_id)
+        }) {
+            Ok(pid) => pid,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if let Err(e) = require_role_mcp(&self.db, plan_project_id, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
         match self.write(|conn| {
             let plan_id = queries::plans::resolve_plan_identifier(conn, &input.plan)?;
             queries::plans::assert_step_in_plan(conn, plan_id, input.step_id)?;
@@ -1575,6 +2006,40 @@ impl LificMcp {
         description = "Mutate a plan or one of its steps. With `step_id`: toggle done (marking done closes a linked issue — the result reports it), attach/detach an issue, rename, add a child step, move/reorder, or delete. WITHOUT step_id: update the plan itself (status active/done/archived, title, anchor issue). Marking a plan done never closes its anchor issue."
     )]
     fn update_plan_step(&self, Parameters(input): Parameters<UpdatePlanStepInput>) -> String {
+        // LIF-198: Maintainer on the plan's own project gates every mutation
+        // below (plan-level and step-level alike).
+        let plan_project_id = match self.read(|conn| {
+            let plan_id = queries::plans::resolve_plan_identifier(conn, &input.plan)?;
+            Ok(queries::plans::get_plan(conn, plan_id)?.project_id)
+        }) {
+            Ok(pid) => pid,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if let Err(e) = require_role_mcp(&self.db, plan_project_id, models::Role::Maintainer) {
+            return format!("Error: {e}");
+        }
+        // Cross-project step↔issue edges need Maintainer on the *issue's*
+        // project too, mirroring `link_issues`' both-sides check: attaching
+        // an issue to a step, adding a child step pre-linked to an issue,
+        // and toggling `done` when the step already references an issue
+        // that could live in a different project than the plan.
+        if let Some(ref ident) = input.attach_issue
+            && let Err(e) = self.require_issue_ident_role_mcp(ident, models::Role::Maintainer)
+        {
+            return format!("Error: {e}");
+        }
+        if let Some(ref ident) = input.add_child_issue
+            && let Err(e) = self.require_issue_ident_role_mcp(ident, models::Role::Maintainer)
+        {
+            return format!("Error: {e}");
+        }
+        if input.done == Some(true)
+            && let Some(step_id) = input.step_id
+            && let Err(e) = self.require_step_issue_role_mcp(step_id, models::Role::Maintainer)
+        {
+            return format!("Error: {e}");
+        }
+
         match self.write(|conn| {
             let plan_id = queries::plans::resolve_plan_identifier(conn, &input.plan)?;
             let mut notes: Vec<String> = Vec::new();
@@ -1743,6 +2208,33 @@ mod tests {
         }));
         assert!(result.starts_with("Created"), "got: {result}");
         result
+    }
+
+    /// LIF-198: MCP-side mirror of `api::test_helpers::setup_membership_test`
+    /// — reuses the exact same fixture (DB with `authz_enforced` ON, an
+    /// admin, and a project with a lead/maintainer/viewer member plus a
+    /// non-member) so the flag-ON test matrix stays byte-identical to
+    /// REST's (LIF-197), just wrapped as an `LificMcp` + `AuthUser`s ready
+    /// for `with_request_user` instead of an axum `Router` + `Extension`.
+    pub(super) fn setup_membership_mcp() -> (
+        LificMcp,
+        models::AuthUser,
+        models::AuthUser,
+        models::AuthUser,
+        models::AuthUser,
+        models::AuthUser,
+        i64,
+    ) {
+        let (db, admin, lead, maintainer, viewer, non_member, project_id) =
+            crate::api::test_helpers::setup_membership_test();
+        let mcp = LificMcp::new(db);
+        let au = |u: crate::db::models::User| models::AuthUser {
+            id: u.id,
+            username: u.username,
+            display_name: u.display_name,
+            is_admin: u.is_admin,
+        };
+        (mcp, au(admin), au(lead), au(maintainer), au(viewer), au(non_member), project_id)
     }
 
     // ── manage_resource ──
@@ -2551,7 +3043,22 @@ mod tests {
 
     // ── comments ──
 
-    fn seed_user(mcp: &LificMcp) {
+    /// Set the authenticated user context so `add_comment` works in tests
+    /// that call MCP tool methods directly (no request/response cycle).
+    ///
+    /// `MCP_REQUEST_USER` is a process-wide static (see `mcp::mod`'s doc
+    /// comment), so mutating it here races against every OTHER test in the
+    /// binary that reads it — including via `LificMcp::write()`'s actor
+    /// stamping, which EVERY write-tool test triggers, not just comment
+    /// tests. `with_request_user`'s callers (production, and the
+    /// `authz_gating_tests` module) are already race-free because they hold
+    /// `MCP_HANDLER_LOCK` for the whole scoped call. This helper joins that
+    /// same lock (via `blocking_lock`, since ordinary `#[test]` fns aren't
+    /// async) and hands the guard back so the caller holds it for its whole
+    /// body — `let _guard = seed_user(&m);` — keeping the global stable
+    /// until the test's tool calls that depend on it are done.
+    fn seed_user(mcp: &LificMcp) -> tokio::sync::MutexGuard<'static, ()> {
+        let guard = crate::mcp::MCP_HANDLER_LOCK.blocking_lock();
         let conn = mcp.db.write().unwrap();
         let user = crate::db::queries::users::create_user(
             &conn,
@@ -2565,7 +3072,7 @@ mod tests {
             },
         )
         .unwrap();
-        // Set the authenticated user context so add_comment works in tests
+        drop(conn);
         *crate::mcp::MCP_REQUEST_USER
             .lock()
             .unwrap_or_else(|e: std::sync::PoisonError<_>| e.into_inner()) = Some(models::AuthUser {
@@ -2574,6 +3081,7 @@ mod tests {
             display_name: user.display_name,
             is_admin: user.is_admin,
         });
+        guard
     }
 
     #[test]
@@ -2581,7 +3089,7 @@ mod tests {
         let m = mcp();
         seed_project(&m, "Proj", "PRJ");
         seed_issue(&m, "PRJ", "Test issue");
-        seed_user(&m);
+        let _guard = seed_user(&m);
 
         let result = m.add_comment(Parameters(AddCommentInput {
             identifier: "PRJ-1".into(),
@@ -2617,7 +3125,7 @@ mod tests {
         let m = mcp();
         seed_project(&m, "Proj", "PRJ");
         seed_issue(&m, "PRJ", "Commented issue");
-        seed_user(&m);
+        let _guard = seed_user(&m);
 
         m.add_comment(Parameters(AddCommentInput {
             identifier: "PRJ-1".into(),
@@ -2647,7 +3155,7 @@ mod tests {
     #[test]
     fn add_comment_bad_identifier() {
         let m = mcp();
-        seed_user(&m);
+        let _guard = seed_user(&m);
 
         let result = m.add_comment(Parameters(AddCommentInput {
             identifier: "NOPE-999".into(),
@@ -2678,7 +3186,11 @@ mod tests {
         .unwrap();
         drop(conn);
 
-        // Clear any leftover auth context
+        // Clear any leftover auth context. Holds MCP_HANDLER_LOCK (see
+        // `seed_user`'s doc comment) so this "clear, then rely on it staying
+        // None" window can't be raced by a concurrently-running
+        // `with_request_user` caller in another test.
+        let _guard = crate::mcp::MCP_HANDLER_LOCK.blocking_lock();
         *crate::mcp::MCP_REQUEST_USER
             .lock()
             .unwrap_or_else(|e: std::sync::PoisonError<_>| e.into_inner()) = None;
@@ -2705,7 +3217,7 @@ mod tests {
             status: None,
             labels: None,
         }));
-        seed_user(&m);
+        let _guard = seed_user(&m);
 
         let result = m.add_comment(Parameters(AddCommentInput {
             identifier: "PGC-DOC-1".into(),
@@ -2735,7 +3247,7 @@ mod tests {
             status: None,
             labels: None,
         }));
-        seed_user(&m);
+        let _guard = seed_user(&m);
 
         m.add_comment(Parameters(AddCommentInput {
             identifier: "MIX-1".into(),
@@ -2773,7 +3285,7 @@ mod tests {
             status: None,
             labels: None,
         }));
-        seed_user(&m);
+        let _guard = seed_user(&m);
 
         let result = m.add_comment(Parameters(AddCommentInput {
             identifier: "DOC-1".into(),
@@ -3527,7 +4039,7 @@ mod tests {
         let m = mcp();
         seed_project(&m, "Proj", "PRJ");
         seed_issue(&m, "PRJ", "Authored");
-        seed_user(&m);
+        let _guard = seed_user(&m);
         m.add_comment(Parameters(AddCommentInput {
             identifier: "PRJ-1".into(),
             content: "Mine".into(),
@@ -3553,7 +4065,7 @@ mod tests {
         let m = mcp();
         seed_project(&m, "Proj", "PRJ");
         seed_issue(&m, "PRJ", "Threaded");
-        seed_user(&m);
+        let _guard = seed_user(&m);
         m.add_comment(Parameters(AddCommentInput {
             identifier: "PRJ-1".into(),
             content: "first".into(),
@@ -4037,5 +4549,802 @@ mod tests {
         assert!(out.contains("Deleted plan"), "got: {out}");
         let got = m.get_plan(Parameters(GetPlanInput { plan: "PLN-PLAN-1".into() }));
         assert!(got.contains("Error"), "deleted plan should not be found: {got}");
+    }
+}
+
+/// LIF-198: project-scoped authorization enforcement across every MCP tool.
+/// Flag-ON cases mirror `api::mod.rs`'s `authz_gating_tests` matrix
+/// byte-for-byte (same fixture — `setup_membership_mcp`, wrapping
+/// `api::test_helpers::setup_membership_test`); the flag-OFF smoke test is
+/// the regression proof that MCP's historical (fully open) behavior hasn't
+/// moved — the 93 pre-existing `mcp::tools::tests` above all run flag-OFF
+/// by default and already prove that in full.
+#[cfg(test)]
+mod authz_gating_tests {
+    use super::tests::setup_membership_mcp;
+    use super::*;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    fn run<F: std::future::Future>(f: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
+    /// Run `f` as `user` via the production MCP identity wrapper, return
+    /// the tool's string result.
+    fn as_user(user: &models::AuthUser, f: impl FnOnce() -> String) -> String {
+        run(crate::mcp::with_request_user(Some(user.clone()), || async { f() }))
+    }
+
+    fn is_forbidden(s: &str) -> bool {
+        s.starts_with("Error: Forbidden:")
+    }
+
+    // ── Reads: single-resource Viewer gate ──────────────────────
+
+    #[test]
+    fn issue_read_denies_non_member_allows_viewer() {
+        let (m, _admin, lead, _maintainer, viewer, non_member, project_id) =
+            setup_membership_mcp();
+        let _ = project_id;
+        let created = as_user(&lead, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "MEM".into(),
+                title: "Secret work".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(created.starts_with("Created"), "got: {created}");
+
+        let denied = as_user(&non_member, || {
+            m.get_issue(Parameters(GetIssueInput { identifier: "MEM-1".into() }))
+        });
+        assert!(is_forbidden(&denied), "non-member get_issue: {denied}");
+
+        let allowed = as_user(&viewer, || {
+            m.get_issue(Parameters(GetIssueInput { identifier: "MEM-1".into() }))
+        });
+        assert!(!is_forbidden(&allowed), "viewer get_issue: {allowed}");
+        assert!(allowed.contains("Secret work"), "got: {allowed}");
+    }
+
+    #[test]
+    fn page_and_plan_reads_follow_the_same_viewer_gate() {
+        let (m, _admin, lead, _maintainer, viewer, non_member, _project_id) =
+            setup_membership_mcp();
+        let page = as_user(&lead, || {
+            m.create_page(Parameters(CreatePageInput {
+                project: Some("MEM".into()),
+                title: "Doc".into(),
+                content: None,
+                folder: None,
+                status: None,
+                labels: None,
+            }))
+        });
+        assert!(page.starts_with("Created"), "got: {page}");
+        let plan = as_user(&lead, || {
+            m.create_plan(Parameters(CreatePlanInput {
+                project: "MEM".into(),
+                title: "Plan".into(),
+                anchor_issue: None,
+                steps: None,
+            }))
+        });
+        assert!(plan.starts_with("Created"), "got: {plan}");
+
+        let denied_page = as_user(&non_member, || {
+            m.get_page(Parameters(GetPageInput { identifier: "MEM-DOC-1".into() }))
+        });
+        assert!(is_forbidden(&denied_page), "got: {denied_page}");
+        let denied_plan = as_user(&non_member, || {
+            m.get_plan(Parameters(GetPlanInput { plan: "MEM-PLAN-1".into() }))
+        });
+        assert!(is_forbidden(&denied_plan), "got: {denied_plan}");
+
+        let allowed_page = as_user(&viewer, || {
+            m.get_page(Parameters(GetPageInput { identifier: "MEM-DOC-1".into() }))
+        });
+        assert!(!is_forbidden(&allowed_page), "got: {allowed_page}");
+        let allowed_plan = as_user(&viewer, || {
+            m.get_plan(Parameters(GetPlanInput { plan: "MEM-PLAN-1".into() }))
+        });
+        assert!(!is_forbidden(&allowed_plan), "got: {allowed_plan}");
+    }
+
+    // ── Reads: cross-project search/list filter instead of denying ──
+
+    #[test]
+    fn search_and_list_resources_project_filter_instead_of_denying() {
+        let (m, _admin, lead, _maintainer, viewer, non_member, _project_id) =
+            setup_membership_mcp();
+        let created = as_user(&lead, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "MEM".into(),
+                title: "Unique searchable xyzzy".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(created.starts_with("Created"), "got: {created}");
+
+        // search: non-member sees nothing, never an error.
+        let denied = as_user(&non_member, || {
+            m.search(Parameters(SearchInput {
+                query: "xyzzy".into(),
+                ..Default::default()
+            }))
+        });
+        assert!(!is_forbidden(&denied), "search must not error: {denied}");
+        assert!(denied.contains("No results"), "got: {denied}");
+
+        let found = as_user(&viewer, || {
+            m.search(Parameters(SearchInput {
+                query: "xyzzy".into(),
+                ..Default::default()
+            }))
+        });
+        assert!(found.contains("1 results"), "got: {found}");
+
+        // list_resources(type="project"): non-member sees 0, member sees theirs.
+        let none_visible = as_user(&non_member, || {
+            m.list_resources(Parameters(ListResourcesInput {
+                resource_type: "project".into(),
+                ..Default::default()
+            }))
+        });
+        assert!(none_visible.starts_with("0 projects"), "got: {none_visible}");
+
+        let one_visible = as_user(&viewer, || {
+            m.list_resources(Parameters(ListResourcesInput {
+                resource_type: "project".into(),
+                ..Default::default()
+            }))
+        });
+        assert!(one_visible.starts_with("1 projects"), "got: {one_visible}");
+    }
+
+    // ── Writes: content mutations gated at Maintainer ────────────
+
+    #[test]
+    fn issue_create_gated_by_maintainer_role() {
+        let (m, admin, lead, maintainer, viewer, non_member, _project_id) =
+            setup_membership_mcp();
+
+        for (user, expect_ok) in [
+            (&non_member, false),
+            (&viewer, false),
+            (&maintainer, true),
+            (&lead, true),
+            (&admin, true),
+        ] {
+            let result = as_user(user, || {
+                m.create_issue(Parameters(CreateIssueInput {
+                    project: "MEM".into(),
+                    title: format!("by {}", user.username),
+                    description: None,
+                    status: None,
+                    priority: None,
+                    module: None,
+                    labels: None,
+                }))
+            });
+            assert_eq!(
+                is_forbidden(&result),
+                !expect_ok,
+                "{} create_issue expected ok={expect_ok}, got: {result}",
+                user.username
+            );
+        }
+    }
+
+    #[test]
+    fn issue_update_and_delete_gated_by_maintainer_role() {
+        let (m, _admin, lead, maintainer, viewer, non_member, _project_id) =
+            setup_membership_mcp();
+        let created = as_user(&maintainer, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "MEM".into(),
+                title: "Target".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(created.starts_with("Created"), "got: {created}");
+
+        let denied = as_user(&viewer, || {
+            m.update_issue(Parameters(UpdateIssueInput {
+                identifier: "MEM-1".into(),
+                title: Some("hijack".into()),
+                ..Default::default()
+            }))
+        });
+        assert!(is_forbidden(&denied), "got: {denied}");
+        let denied2 = as_user(&non_member, || {
+            m.update_issue(Parameters(UpdateIssueInput {
+                identifier: "MEM-1".into(),
+                title: Some("hijack".into()),
+                ..Default::default()
+            }))
+        });
+        assert!(is_forbidden(&denied2), "got: {denied2}");
+
+        let allowed = as_user(&lead, || {
+            m.update_issue(Parameters(UpdateIssueInput {
+                identifier: "MEM-1".into(),
+                title: Some("renamed".into()),
+                ..Default::default()
+            }))
+        });
+        assert!(!is_forbidden(&allowed), "got: {allowed}");
+
+        let denied_delete = as_user(&viewer, || {
+            m.delete(Parameters(DeleteInput {
+                resource_type: "issue".into(),
+                identifier: "MEM-1".into(),
+                project: None,
+            }))
+        });
+        assert!(is_forbidden(&denied_delete), "got: {denied_delete}");
+
+        let allowed_delete = as_user(&lead, || {
+            m.delete(Parameters(DeleteInput {
+                resource_type: "issue".into(),
+                identifier: "MEM-1".into(),
+                project: None,
+            }))
+        });
+        assert!(!is_forbidden(&allowed_delete), "got: {allowed_delete}");
+    }
+
+    // ── Comments: Viewer can read + create; non-member cannot ───
+
+    #[test]
+    fn comment_create_allows_viewer_denies_non_member() {
+        let (m, _admin, lead, _maintainer, viewer, non_member, _project_id) =
+            setup_membership_mcp();
+        let created = as_user(&lead, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "MEM".into(),
+                title: "Commentable".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(created.starts_with("Created"), "got: {created}");
+
+        let allowed = as_user(&viewer, || {
+            m.add_comment(Parameters(AddCommentInput {
+                identifier: "MEM-1".into(),
+                content: "viewers can comment".into(),
+            }))
+        });
+        assert!(!is_forbidden(&allowed), "viewer must be allowed to comment: {allowed}");
+
+        let denied = as_user(&non_member, || {
+            m.add_comment(Parameters(AddCommentInput {
+                identifier: "MEM-1".into(),
+                content: "should not land".into(),
+            }))
+        });
+        assert!(is_forbidden(&denied), "got: {denied}");
+    }
+
+    // ── Structure endpoints: loosened to Maintainer once enforced ──
+
+    #[test]
+    fn structure_endpoints_viewer_denied_maintainer_allowed() {
+        let (m, _admin, _lead, maintainer, viewer, non_member, _project_id) =
+            setup_membership_mcp();
+
+        let denied = as_user(&viewer, || {
+            m.manage_resource(Parameters(ManageResourceInput {
+                resource_type: "module".into(),
+                action: "create".into(),
+                project: Some("MEM".into()),
+                name: Some("Nope".into()),
+                identifier: None,
+                description: None,
+                current_name: None,
+                status: None,
+                color: None,
+            }))
+        });
+        assert!(is_forbidden(&denied), "got: {denied}");
+        let denied2 = as_user(&non_member, || {
+            m.manage_resource(Parameters(ManageResourceInput {
+                resource_type: "label".into(),
+                action: "create".into(),
+                project: Some("MEM".into()),
+                name: Some("nope".into()),
+                identifier: None,
+                description: None,
+                current_name: None,
+                status: None,
+                color: None,
+            }))
+        });
+        assert!(is_forbidden(&denied2), "got: {denied2}");
+
+        let allowed = as_user(&maintainer, || {
+            m.manage_resource(Parameters(ManageResourceInput {
+                resource_type: "module".into(),
+                action: "create".into(),
+                project: Some("MEM".into()),
+                name: Some("Backend".into()),
+                identifier: None,
+                description: None,
+                current_name: None,
+                status: None,
+                color: None,
+            }))
+        });
+        assert!(
+            !is_forbidden(&allowed),
+            "maintainer should manage structure once enforcement loosens the gate: {allowed}"
+        );
+        let allowed2 = as_user(&maintainer, || {
+            m.manage_resource(Parameters(ManageResourceInput {
+                resource_type: "folder".into(),
+                action: "create".into(),
+                project: Some("MEM".into()),
+                name: Some("Docs".into()),
+                identifier: None,
+                description: None,
+                current_name: None,
+                status: None,
+                color: None,
+            }))
+        });
+        assert!(!is_forbidden(&allowed2), "got: {allowed2}");
+
+        // Maintainer cannot manage project settings or delete the project.
+        let denied_settings = as_user(&maintainer, || {
+            m.manage_resource(Parameters(ManageResourceInput {
+                resource_type: "project".into(),
+                action: "update".into(),
+                project: Some("MEM".into()),
+                name: Some("Nope".into()),
+                identifier: None,
+                description: None,
+                current_name: None,
+                status: None,
+                color: None,
+            }))
+        });
+        assert!(is_forbidden(&denied_settings), "got: {denied_settings}");
+        let denied_delete = as_user(&maintainer, || {
+            m.delete(Parameters(DeleteInput {
+                resource_type: "project".into(),
+                identifier: "MEM".into(),
+                project: None,
+            }))
+        });
+        assert!(is_forbidden(&denied_delete), "got: {denied_delete}");
+    }
+
+    // ── Project settings / delete: Lead ──────────────────────────
+
+    #[test]
+    fn project_settings_update_maintainer_denied_lead_allowed() {
+        let (m, _admin, lead, maintainer, _viewer, _non_member, _project_id) =
+            setup_membership_mcp();
+
+        let denied = as_user(&maintainer, || {
+            m.manage_resource(Parameters(ManageResourceInput {
+                resource_type: "project".into(),
+                action: "update".into(),
+                project: Some("MEM".into()),
+                name: Some("Nope".into()),
+                identifier: None,
+                description: None,
+                current_name: None,
+                status: None,
+                color: None,
+            }))
+        });
+        assert!(is_forbidden(&denied), "got: {denied}");
+
+        let allowed = as_user(&lead, || {
+            m.manage_resource(Parameters(ManageResourceInput {
+                resource_type: "project".into(),
+                action: "update".into(),
+                project: Some("MEM".into()),
+                name: Some("Renamed".into()),
+                identifier: None,
+                description: None,
+                current_name: None,
+                status: None,
+                color: None,
+            }))
+        });
+        assert!(!is_forbidden(&allowed), "got: {allowed}");
+    }
+
+    #[test]
+    fn project_delete_maintainer_denied_lead_allowed_when_enforced() {
+        let (m, _admin, lead, maintainer, _viewer, _non_member, _project_id) =
+            setup_membership_mcp();
+
+        let denied = as_user(&maintainer, || {
+            m.delete(Parameters(DeleteInput {
+                resource_type: "project".into(),
+                identifier: "MEM".into(),
+                project: None,
+            }))
+        });
+        assert!(is_forbidden(&denied), "got: {denied}");
+
+        let allowed = as_user(&lead, || {
+            m.delete(Parameters(DeleteInput {
+                resource_type: "project".into(),
+                identifier: "MEM".into(),
+                project: None,
+            }))
+        });
+        assert!(!is_forbidden(&allowed), "got: {allowed}");
+    }
+
+    // ── Cross-project relations: role required on BOTH sides ─────
+
+    #[test]
+    fn relation_link_requires_maintainer_on_both_projects() {
+        let (m, _admin, lead, maintainer, _viewer, _non_member, project_id) =
+            setup_membership_mcp();
+        let issue_a = as_user(&lead, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "MEM".into(),
+                title: "A".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(issue_a.starts_with("Created"), "got: {issue_a}");
+
+        let other_project_id = {
+            let conn = m.db.write().unwrap();
+            crate::db::queries::create_project(
+                &conn,
+                &models::CreateProject {
+                    name: "Other".into(),
+                    identifier: "OTH".into(),
+                    description: String::new(),
+                    emoji: None,
+                    lead_user_id: Some(lead.id),
+                },
+            )
+            .unwrap()
+            .id
+        };
+        let _ = project_id;
+        let issue_b = as_user(&lead, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "OTH".into(),
+                title: "B".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(issue_b.starts_with("Created"), "got: {issue_b}");
+
+        let denied = as_user(&maintainer, || {
+            m.link_issues(Parameters(LinkIssuesInput {
+                source: "MEM-1".into(),
+                target: "OTH-1".into(),
+                relation_type: "relates_to".into(),
+            }))
+        });
+        assert!(is_forbidden(&denied), "maintainer has no role on target's project: {denied}");
+
+        {
+            let conn = m.db.write().unwrap();
+            crate::db::queries::members::upsert_member(
+                &conn,
+                other_project_id,
+                maintainer.id,
+                models::Role::Maintainer,
+            )
+            .unwrap();
+        }
+        let allowed = as_user(&maintainer, || {
+            m.link_issues(Parameters(LinkIssuesInput {
+                source: "MEM-1".into(),
+                target: "OTH-1".into(),
+                relation_type: "relates_to".into(),
+            }))
+        });
+        assert!(!is_forbidden(&allowed), "maintainer now has Maintainer on both sides: {allowed}");
+    }
+
+    /// LIF-198 scope: `update_plan_step`'s `attach_issue` is the plan
+    /// equivalent of `link_issues` — attaching a foreign-project issue to a
+    /// step requires Maintainer on that issue's project too.
+    #[test]
+    fn plan_step_attach_issue_requires_maintainer_on_issue_project() {
+        let (m, _admin, lead, maintainer, _viewer, _non_member, _project_id) =
+            setup_membership_mcp();
+        let plan = as_user(&maintainer, || {
+            m.create_plan(Parameters(CreatePlanInput {
+                project: "MEM".into(),
+                title: "Plan".into(),
+                anchor_issue: None,
+                steps: Some(vec![PlanStepInput { title: "step".into(), ..Default::default() }]),
+            }))
+        });
+        assert!(plan.starts_with("Created"), "got: {plan}");
+        let step_id: i64 = plan
+            .split('#')
+            .nth(1)
+            .and_then(|s| s.split_whitespace().next())
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        let other_project_id = {
+            let conn = m.db.write().unwrap();
+            crate::db::queries::create_project(
+                &conn,
+                &models::CreateProject {
+                    name: "Other".into(),
+                    identifier: "OT2".into(),
+                    description: String::new(),
+                    emoji: None,
+                    lead_user_id: Some(lead.id),
+                },
+            )
+            .unwrap()
+            .id
+        };
+        let foreign_issue = as_user(&lead, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "OT2".into(),
+                title: "Foreign".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(foreign_issue.starts_with("Created"), "got: {foreign_issue}");
+
+        let denied = as_user(&maintainer, || {
+            m.update_plan_step(Parameters(UpdatePlanStepInput {
+                plan: "MEM-PLAN-1".into(),
+                step_id: Some(step_id),
+                attach_issue: Some("OT2-1".into()),
+                ..Default::default()
+            }))
+        });
+        assert!(
+            is_forbidden(&denied),
+            "maintainer has no role on the foreign issue's project: {denied}"
+        );
+
+        {
+            let conn = m.db.write().unwrap();
+            crate::db::queries::members::upsert_member(
+                &conn,
+                other_project_id,
+                maintainer.id,
+                models::Role::Maintainer,
+            )
+            .unwrap();
+        }
+        let allowed = as_user(&maintainer, || {
+            m.update_plan_step(Parameters(UpdatePlanStepInput {
+                plan: "MEM-PLAN-1".into(),
+                step_id: Some(step_id),
+                attach_issue: Some("OT2-1".into()),
+                ..Default::default()
+            }))
+        });
+        assert!(!is_forbidden(&allowed), "got: {allowed}");
+    }
+
+    // ── Workspace-level (project-less) pages: admin-only ─────────
+
+    #[test]
+    fn workspace_page_mutation_requires_admin() {
+        let (m, admin, _lead, maintainer, _viewer, _non_member, _project_id) =
+            setup_membership_mcp();
+
+        let denied = as_user(&maintainer, || {
+            m.create_page(Parameters(CreatePageInput {
+                project: None,
+                title: "Workspace doc".into(),
+                content: None,
+                folder: None,
+                status: None,
+                labels: None,
+            }))
+        });
+        assert!(is_forbidden(&denied), "got: {denied}");
+
+        let allowed = as_user(&admin, || {
+            m.create_page(Parameters(CreatePageInput {
+                project: None,
+                title: "Workspace doc".into(),
+                content: None,
+                folder: None,
+                status: None,
+                labels: None,
+            }))
+        });
+        assert!(!is_forbidden(&allowed), "got: {allowed}");
+    }
+
+    // ── Bot -> owner inheritance (spot-check one read + one write) ──
+
+    #[test]
+    fn bot_owned_by_maintainer_inherits_role() {
+        let (m, _admin, _lead, maintainer, _viewer, _non_member, _project_id) =
+            setup_membership_mcp();
+        let bot = {
+            let conn = m.db.write().unwrap();
+            let bot = crate::db::queries::users::create_bot_user(
+                &conn,
+                maintainer.id,
+                "bot1",
+                "bot1",
+            )
+            .unwrap();
+            models::AuthUser { id: bot.id, username: bot.username, display_name: bot.display_name, is_admin: bot.is_admin }
+        };
+
+        let created = as_user(&bot, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "MEM".into(),
+                title: "Bot-made".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(!is_forbidden(&created), "bot inherits maintainer's write access: {created}");
+
+        let read = as_user(&bot, || {
+            m.get_issue(Parameters(GetIssueInput { identifier: "MEM-1".into() }))
+        });
+        assert!(!is_forbidden(&read), "bot inherits maintainer's read access: {read}");
+    }
+
+    // ── Headline regression: non-member denied everywhere ────────
+
+    #[test]
+    fn non_member_denied_on_reads_mutations_and_delete() {
+        let (m, _admin, lead, _maintainer, _viewer, non_member, _project_id) =
+            setup_membership_mcp();
+        let created = as_user(&lead, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "MEM".into(),
+                title: "Guarded".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(created.starts_with("Created"), "got: {created}");
+
+        let read = as_user(&non_member, || {
+            m.get_issue(Parameters(GetIssueInput { identifier: "MEM-1".into() }))
+        });
+        assert!(is_forbidden(&read), "read: {read}");
+
+        let mutate = as_user(&non_member, || {
+            m.update_issue(Parameters(UpdateIssueInput {
+                identifier: "MEM-1".into(),
+                title: Some("hijacked".into()),
+                ..Default::default()
+            }))
+        });
+        assert!(is_forbidden(&mutate), "mutation: {mutate}");
+
+        let delete = as_user(&non_member, || {
+            m.delete(Parameters(DeleteInput {
+                resource_type: "issue".into(),
+                identifier: "MEM-1".into(),
+                project: None,
+            }))
+        });
+        assert!(is_forbidden(&delete), "delete: {delete}");
+    }
+
+    // ── Flag OFF smoke: non-member agent can still mutate ────────
+
+    #[test]
+    fn flag_off_non_member_agent_can_still_mutate() {
+        // setup_lead_test-equivalent: a plain project with authz_enforced
+        // left at its default (off), an unrelated authenticated user.
+        let db = crate::db::open_memory().expect("test db");
+        let (project_lead, outsider) = {
+            let conn = db.write().unwrap();
+            let lead = crate::db::queries::users::create_user(
+                &conn,
+                &crate::db::models::CreateUser {
+                    username: "lead".into(),
+                    email: "lead@test.com".into(),
+                    password: "testpassword1".into(),
+                    display_name: None,
+                    is_admin: false,
+                    is_bot: false,
+                },
+            )
+            .unwrap();
+            let outsider = crate::db::queries::users::create_user(
+                &conn,
+                &crate::db::models::CreateUser {
+                    username: "outsider".into(),
+                    email: "outsider@test.com".into(),
+                    password: "testpassword1".into(),
+                    display_name: None,
+                    is_admin: false,
+                    is_bot: false,
+                },
+            )
+            .unwrap();
+            crate::db::queries::create_project(
+                &conn,
+                &models::CreateProject {
+                    name: "Legacy".into(),
+                    identifier: "LEG".into(),
+                    description: String::new(),
+                    emoji: None,
+                    lead_user_id: Some(lead.id),
+                },
+            )
+            .unwrap();
+            (lead, outsider)
+        };
+        let m = LificMcp::new(db);
+        let outsider_user = models::AuthUser {
+            id: outsider.id,
+            username: outsider.username,
+            display_name: outsider.display_name,
+            is_admin: outsider.is_admin,
+        };
+        let _ = project_lead;
+
+        let result = as_user(&outsider_user, || {
+            m.create_issue(Parameters(CreateIssueInput {
+                project: "LEG".into(),
+                title: "Legacy open".into(),
+                description: None,
+                status: None,
+                priority: None,
+                module: None,
+                labels: None,
+            }))
+        });
+        assert!(
+            !is_forbidden(&result),
+            "flag off: a non-member agent must still be able to mutate (MCP's historical behavior): {result}"
+        );
     }
 }

@@ -535,6 +535,21 @@ pub fn set_step_done(
     Ok(effect)
 }
 
+/// Read a step's currently-linked issue id, if any. LIF-198: the MCP layer
+/// uses this to check for a Maintainer role on the *issue's* project before
+/// a `done` toggle is allowed to close it, when that issue lives in a
+/// different project than the step's own plan (mirrors `link_issues`'
+/// both-sides check).
+pub fn step_issue_id(conn: &Connection, step_id: i64) -> Result<Option<i64>, LificError> {
+    conn.query_row(
+        "SELECT issue_id FROM plan_steps WHERE id = ?1",
+        params![step_id],
+        |row| row.get(0),
+    )
+    .optional()?
+    .ok_or_else(|| LificError::NotFound(format!("plan step {step_id} not found")))
+}
+
 /// Attach (or clear, with None) the issue a step references.
 pub fn set_step_issue(
     conn: &Connection,
