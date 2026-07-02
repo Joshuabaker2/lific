@@ -22,6 +22,7 @@
   import type { SortField } from "./sort";
   import type { GroupBy, Density, LaneBy } from "./grouping";
   import type { IssueListState } from "./state.svelte";
+  import { toggleShortcutHelp } from "../shortcutHelp.svelte";
 
   let {
     view,
@@ -167,7 +168,6 @@
           view.filterOpen = !view.filterOpen;
           view.sortOpen = false;
           view.displayOpen = false;
-          view.hintsOpen = false;
           view.lanesOpen = false;
           view.newMenuOpen = false;
         }}
@@ -227,7 +227,6 @@
             e.stopPropagation();
             view.sortOpen = !view.sortOpen;
             view.displayOpen = false;
-            view.hintsOpen = false;
             view.lanesOpen = false;
           }}
         >
@@ -313,7 +312,6 @@
             e.stopPropagation();
             view.lanesOpen = !view.lanesOpen;
             view.sortOpen = false;
-            view.hintsOpen = false;
             view.newMenuOpen = false;
             view.filterOpen = false;
           }}
@@ -373,7 +371,7 @@
                  text-[var(--text-muted)] hover:text-[var(--text)]
                  hover:bg-[var(--bg-subtle)] transition-colors
                  {view.displayOpen ? 'text-[var(--text)] bg-[var(--bg-subtle)]' : ''}"
-          onclick={(e) => { e.stopPropagation(); view.displayOpen = !view.displayOpen; view.sortOpen = false; view.hintsOpen = false; view.newMenuOpen = false; }}
+          onclick={(e) => { e.stopPropagation(); view.displayOpen = !view.displayOpen; view.sortOpen = false; view.newMenuOpen = false; }}
         >
           <SlidersHorizontal size={14} />
         </button>
@@ -464,59 +462,21 @@
       </Tooltip>
     {/if}
 
-    <!-- Keyboard cheatsheet popover. Hidden below md — no keyboard on touch. -->
+    <!-- LIF-245: opens the shared Shortcut Help overlay (Layout.svelte),
+         sourced from the lib/shortcuts.ts registry — no longer a
+         topbar-local popover with its own hand-maintained list. Hidden
+         below md since there's no keyboard to shortcut with on touch. -->
     <div class="relative hidden md:block">
-      <Tooltip content={view.hintsOpen ? null : "Shortcuts  ·  ?"} placement="bottom">
+      <Tooltip content="Shortcuts  ·  ?" placement="bottom">
         <button
           class="size-7 flex items-center justify-center rounded-md
                  text-[var(--text-muted)] hover:text-[var(--text)]
-                 hover:bg-[var(--bg-subtle)] transition-colors
-                 {view.hintsOpen ? 'text-[var(--text)] bg-[var(--bg-subtle)]' : ''}"
-          onclick={(e) => { e.stopPropagation(); view.hintsOpen = !view.hintsOpen; view.displayOpen = false; view.lanesOpen = false; }}
+                 hover:bg-[var(--bg-subtle)] transition-colors"
+          onclick={(e) => { e.stopPropagation(); toggleShortcutHelp(); }}
         >
           <HelpCircle size={14} />
         </button>
       </Tooltip>
-      {#if view.hintsOpen}
-        <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-        <div
-          class="absolute right-0 top-full mt-1.5 z-30 w-[240px]
-                 bg-[var(--surface)] border border-[var(--border)]
-                 rounded-lg shadow-lg p-3"
-          onclick={(e) => e.stopPropagation()}
-        >
-          <div class="text-[var(--text-faint)] text-micro
-                      uppercase tracking-widest font-semibold mb-2">
-            Keyboard
-          </div>
-          <ul class="space-y-1.5 text-body-sm">
-            {#each [
-              ["C", "New issue"],
-              ["S", "Cycle status"],
-              ["P", "Cycle priority"],
-              ["↑ ↓ / J K", "Navigate"],
-              ["X", "Select"],
-              ["⇧ J K", "Extend selection"],
-              ["Enter", "Open"],
-              ["/", "Search"],
-              ["?", "Show this"],
-              ["Esc", "Clear / close"],
-            ] as [keys, label]}
-              <li class="flex items-center justify-between gap-3">
-                <span class="text-[var(--text-muted)]">{label}</span>
-                <kbd class="px-1.5 py-0.5 rounded
-                            border border-[var(--border)]
-                            bg-[var(--bg-subtle)]
-                            text-[var(--text)]
-                            font-mono text-micro leading-none
-                            shrink-0">
-                  {keys}
-                </kbd>
-              </li>
-            {/each}
-          </ul>
-        </div>
-      {/if}
     </div>
 
     <!-- Separator -->
@@ -573,7 +533,6 @@
             view.sortOpen = false;
             view.displayOpen = false;
             view.lanesOpen = false;
-            view.hintsOpen = false;
           }}
         >
           <ChevronDown

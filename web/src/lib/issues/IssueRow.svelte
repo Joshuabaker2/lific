@@ -31,7 +31,10 @@
     hitSnippet,
     statusOpen,
     priorityOpen,
+    moduleOpen,
     statusPickerIdx,
+    priorityPickerIdx,
+    modulePickerIdx,
     onOpen,
     onPeek,
     onRangeSelect,
@@ -39,9 +42,13 @@
     onMouseEnterRow,
     onToggleStatusDropdown,
     onTogglePriorityDropdown,
+    onToggleModuleDropdown,
     onPickStatus,
     onPickPriority,
+    onPickModule,
     onHoverStatusOption,
+    onHoverPriorityOption,
+    onHoverModuleOption,
   }: {
     issue: Issue;
     idx: number;
@@ -61,8 +68,15 @@
     statusOpen: boolean;
     /** This row's inline priority dropdown is open. */
     priorityOpen: boolean;
+    /** This row's inline module dropdown is open (LIF-245). */
+    moduleOpen: boolean;
     /** Highlighted index within the open status picker. */
     statusPickerIdx: number;
+    /** Highlighted index within the open priority picker (LIF-245). */
+    priorityPickerIdx: number;
+    /** Highlighted index within the open module picker — 0 is "No module",
+     *  n+1 is `modules[n]` (LIF-245). */
+    modulePickerIdx: number;
     onOpen: (issue: Issue) => void;
     /** LIF-244: opens the peek panel on this issue (hover affordance —
      *  mod-click stays reserved for ctrl/cmd-toggle-select on rows, see
@@ -73,9 +87,13 @@
     onMouseEnterRow: (e: MouseEvent, idx: number) => void;
     onToggleStatusDropdown: (issue: Issue) => void;
     onTogglePriorityDropdown: (issue: Issue) => void;
+    onToggleModuleDropdown: (issue: Issue) => void;
     onPickStatus: (issue: Issue, status: string) => void;
     onPickPriority: (issue: Issue, priority: string) => void;
+    onPickModule: (issue: Issue, moduleId: number | null) => void;
     onHoverStatusOption: (si: number) => void;
+    onHoverPriorityOption: (pi: number) => void;
+    onHoverModuleOption: (mi: number) => void;
   } = $props();
 
   const mod = $derived(
@@ -240,18 +258,73 @@
     </div>
   {/if}
 
-  <!-- LIF-191: module chip — which arc this issue belongs to. Hidden when
-       already grouped by module (redundant). -->
-  {#if issue.module_id != null && groupBy !== "module" && mod}
-    <span class="hidden sm:inline-flex shrink-0 items-center gap-1 max-w-[130px] text-micro text-[var(--text-muted)]">
-      {#if mod.emoji}
-        <ProjectIcon value={mod.emoji} size={12} />
-      {:else}
-        <Layers size={11} class="text-[var(--text-faint)]" />
-      {/if}
-      <span class="truncate">{mod.name}</span>
-    </span>
-  {/if}
+  <!-- LIF-191/245: module — click (or the `m` shortcut on the focused row)
+       to pick in place, mirrors the status/priority pickers. Previously a
+       read-only chip that hid itself when grouped by module (redundant
+       with the group header); now that it's an editable control that hide
+       would also make `m` and the popover invisible mid-group, so it
+       always renders (still hover-revealed when unset, like priority's
+       "none" affordance). -->
+  <div class="relative shrink-0 hidden sm:block">
+    <Tooltip content={moduleOpen ? null : mod ? mod.name : "Set module"}>
+      <button
+        class="max-w-[130px] flex items-center gap-1 text-micro
+               text-[var(--text-muted)] transition-opacity hover:text-[var(--text)]
+               {mod ? '' : 'opacity-0 group-hover:opacity-100'}"
+        onclick={(e) => {
+          e.stopPropagation();
+          onToggleModuleDropdown(issue);
+        }}
+      >
+        {#if mod?.emoji}
+          <ProjectIcon value={mod.emoji} size={12} />
+        {:else}
+          <Layers size={11} class="text-[var(--text-faint)]" />
+        {/if}
+        <span class="truncate">{mod ? mod.name : "Module"}</span>
+      </button>
+    </Tooltip>
+    {#if moduleOpen}
+      <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+      <div
+        class="absolute left-0 top-full mt-1.5 z-30 w-[180px] max-h-[240px]
+               overflow-y-auto bg-[var(--surface)] border border-[var(--border)]
+               rounded-lg shadow-lg py-1.5"
+        onclick={(e) => e.stopPropagation()}
+      >
+        <button
+          class="w-full flex items-center gap-2 px-3 py-1.5 text-left
+                 text-body-sm transition-colors
+                 {modulePickerIdx === 0
+            ? 'text-[var(--accent)] bg-[var(--accent-subtle)] font-medium'
+            : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
+          onclick={() => onPickModule(issue, null)}
+          onmouseenter={() => onHoverModuleOption(0)}
+        >
+          <Layers size={13} class="text-[var(--text-faint)]" />
+          No module
+        </button>
+        {#each modules as m, mi}
+          <button
+            class="w-full flex items-center gap-2 px-3 py-1.5 text-left
+                   text-body-sm transition-colors truncate
+                   {mi + 1 === modulePickerIdx
+              ? 'text-[var(--accent)] bg-[var(--accent-subtle)] font-medium'
+              : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
+            onclick={() => onPickModule(issue, m.id)}
+            onmouseenter={() => onHoverModuleOption(mi + 1)}
+          >
+            {#if m.emoji}
+              <ProjectIcon value={m.emoji} size={13} />
+            {:else}
+              <Layers size={13} class="text-[var(--text-faint)]" />
+            {/if}
+            <span class="truncate">{m.name}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
 
   <!-- LIF-191: priority — click to pick in place (mirrors the status
        picker). When 'none', a faint affordance appears on row hover. -->
@@ -286,14 +359,15 @@
                rounded-lg shadow-lg py-1.5"
         onclick={(e) => e.stopPropagation()}
       >
-        {#each PRIORITIES as p}
+        {#each PRIORITIES as p, pi}
           <button
             class="w-full flex items-center gap-2 px-3 py-1.5 text-left
                    text-body-sm capitalize transition-colors
-                   {p === issue.priority
+                   {pi === priorityPickerIdx
               ? 'text-[var(--accent)] bg-[var(--accent-subtle)] font-medium'
               : 'text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"
             onclick={() => onPickPriority(issue, p)}
+            onmouseenter={() => onHoverPriorityOption(pi)}
           >
             <span class="w-4 flex justify-center"><PriorityIcon priority={p} size={15} /></span>
             {p}

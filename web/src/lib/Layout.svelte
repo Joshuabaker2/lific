@@ -9,11 +9,16 @@
   } from "./api";
   import ProjectIcon from "./ProjectIcon.svelte";
   import CommandPalette from "./CommandPalette.svelte";
+  import ShortcutHelp from "./ShortcutHelp.svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import { getPreference, setPreference, resolveTheme, type ThemePreference } from "./theme";
-  import { Settings, List, LayoutGrid, FileText, Plus, Layers, History, ListChecks, LayoutDashboard, Search, ChevronRight, Sun, Moon, Monitor, Menu, X, Home, TrendingUp } from "lucide-svelte";
+  import { Settings, List, LayoutGrid, FileText, Plus, Layers, History, ListChecks, LayoutDashboard, Search, ChevronRight, Sun, Moon, Monitor, Menu, X, Home, TrendingUp, HelpCircle } from "lucide-svelte";
   import { setContext } from "svelte";
+  import { peekState } from "./issues/peek.svelte";
+  import { commandPaletteState } from "./commandPaletteState.svelte";
+  import { toggleShortcutHelp } from "./shortcutHelp.svelte";
+  import { isTypingContext } from "./shortcuts";
 
   // Ref to the command palette so the sidebar's "Jump to…" affordance can
   // summon it (LIF-192).
@@ -26,12 +31,28 @@
     drawerOpen = false;
   }
 
-  // Escape dismisses the drawer. Registered as a window listener via effect
-  // because <svelte:window> may only appear at the component's top level, and
-  // our markup is gated behind {#if user}.
+  // Escape dismisses the drawer, and "?" summons the Shortcut Help overlay
+  // from anywhere in the app (LIF-245) — registered as a window listener
+  // via effect because <svelte:window> may only appear at the component's
+  // top level, and our markup is gated behind {#if user}.
+  //
+  // The "?" guard deliberately checks typing/peek/palette directly rather
+  // than calling `shortcutsSuppressed()` — that helper also folds in
+  // "the shortcut help overlay itself is open", which would make a second
+  // "?" press unable to close it. Esc still closes it (ShortcutHelp owns
+  // that), and this toggle works both ways.
   $effect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && drawerOpen) closeDrawer();
+      if (
+        e.key === "?" &&
+        !isTypingContext() &&
+        !peekState.open &&
+        !commandPaletteState.open
+      ) {
+        e.preventDefault();
+        toggleShortcutHelp();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -470,6 +491,19 @@
             <Sun size={15} />
           {/if}
         </button>
+        <!-- LIF-245: small, unobtrusive entry point to the Shortcut Help
+             overlay — mirrors the theme toggle beside it. The "?" key does
+             the same thing from anywhere; this is for anyone who doesn't
+             know the key exists yet. -->
+        <button
+          class="size-8 shrink-0 grid place-items-center rounded-md
+                 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)] transition-colors"
+          onclick={() => toggleShortcutHelp()}
+          title="Keyboard shortcuts  ·  ?"
+          aria-label="Keyboard shortcuts"
+        >
+          <HelpCircle size={15} />
+        </button>
       </div>
     </aside>
 
@@ -547,4 +581,7 @@
   <!-- LIF-159: cmd+k / ctrl+p jump-anywhere. Mounted here (once, above
        routes) so its session catalog cache survives navigation. -->
   <CommandPalette bind:this={palette} {navigate} actions={paletteActions} />
+  <!-- LIF-245: shortcut help overlay, mounted once so "?" works from any
+       route. -->
+  <ShortcutHelp />
 {/if}

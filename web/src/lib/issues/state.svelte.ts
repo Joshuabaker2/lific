@@ -245,7 +245,6 @@ export class IssueListState {
   // ── Topbar popovers (only one open at a time, but tracked separately so
   //    the global click/Escape handlers can close whichever is open) ──
   searchExpanded = $state(false);
-  hintsOpen = $state(false);
   displayOpen = $state(false);
   sortOpen = $state(false);
   newMenuOpen = $state(false);
@@ -266,9 +265,19 @@ export class IssueListState {
   statusDropdownId = $state<number | null>(null);
   /** Issue id whose inline priority picker is open (or null). */
   priorityDropdownId = $state<number | null>(null);
+  /** Issue id whose inline module picker is open (or null). LIF-245: the
+   *  row-level module picker, opened via click or the `m` shortcut —
+   *  mirrors status/priority. */
+  moduleDropdownId = $state<number | null>(null);
   /** Highlighted index within an open status picker (shared by inline-create
    *  and row dropdowns). Kept under the original name to limit churn. */
   inlineCreateStatusIdx = $state(0);
+  /** Highlighted index within an open priority picker (row dropdown only —
+   *  there's no inline-create equivalent for priority). LIF-245. */
+  priorityPickerIdx = $state(0);
+  /** Highlighted index within an open module picker. Index 0 is always
+   *  "No module"; index n+1 is `modules[n]`. LIF-245. */
+  modulePickerIdx = $state(0);
 
   /** True once a hydrate pass has run, so the persist effect doesn't clobber
    *  storage with defaults before the stored values are loaded. */
@@ -386,7 +395,6 @@ export class IssueListState {
   // ── Popover helpers ──
   /** Close every topbar popover. Used by the global click + Escape paths. */
   closePopovers(): void {
-    this.hintsOpen = false;
     this.displayOpen = false;
     this.sortOpen = false;
     this.newMenuOpen = false;

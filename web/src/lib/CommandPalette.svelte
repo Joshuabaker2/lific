@@ -25,6 +25,8 @@
     type Folder,
   } from "./api";
   import { fuzzyMatch } from "./fuzzy";
+  import { commandPaletteState } from "./commandPaletteState.svelte";
+  import { shortcutHelpState } from "./shortcutHelp.svelte";
   import ProjectIcon from "./ProjectIcon.svelte";
   import {
     Search, CircleDot, FileText, Layers, FolderClosed, Box, CornerDownLeft,
@@ -65,6 +67,7 @@
 
   async function show() {
     open = true;
+    commandPaletteState.open = true;
     mode = { type: "root" };
     query = "";
     selectedIdx = 0;
@@ -78,6 +81,7 @@
 
   function hide() {
     open = false;
+    commandPaletteState.open = false;
     mode = { type: "root" };
   }
 
@@ -122,8 +126,11 @@
 
   function onWindowKeydown(e: KeyboardEvent) {
     // cmd/ctrl+K and cmd/ctrl+P both summon the palette (P overrides
-    // the browser print dialog — jumping beats printing).
+    // the browser print dialog — jumping beats printing). LIF-245: don't
+    // summon it on top of the shortcut help overlay — that one owns Esc
+    // via its own listener and the two stacking would just be confusing.
     if ((e.metaKey || e.ctrlKey) && ["k", "p"].includes(e.key.toLowerCase())) {
+      if (shortcutHelpState.open) return;
       e.preventDefault();
       if (open) hide();
       else void show();

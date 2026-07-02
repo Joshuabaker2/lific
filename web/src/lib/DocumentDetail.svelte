@@ -28,6 +28,7 @@
   import { ArrowLeft, Download, PanelRight, X } from "lucide-svelte";
   import { getContext, type Snippet } from "svelte";
   import type { Activity, Comment } from "./api";
+  import { isTypingContext } from "./shortcuts";
   import type { PaletteAction, PaletteContext } from "./palette";
 
   let {
@@ -237,13 +238,9 @@
   });
 
   function handleKeydown(e: KeyboardEvent) {
-    const el = document.activeElement;
-    const inField =
-      !!el &&
-      (el.tagName === "INPUT" ||
-        el.tagName === "TEXTAREA" ||
-        el.tagName === "SELECT" ||
-        (el as HTMLElement).isContentEditable);
+    // LIF-245: shared with every other keydown handler in the app (was a
+    // locally duplicated computation) — see lib/shortcuts.ts.
+    const inField = isTypingContext();
 
     // "E" enters edit mode for the body from anywhere outside a field.
     if ((e.key === "e" || e.key === "E") && !e.ctrlKey && !e.metaKey && !e.altKey) {

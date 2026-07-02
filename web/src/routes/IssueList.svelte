@@ -48,6 +48,9 @@
     bulkUpdateIssuesWithUndo,
     prevPatchFor,
   } from "../lib/issues/state.svelte"; // LIF-243: undo layer
+  import { shortcutsSuppressed } from "../lib/shortcuts"; // LIF-245
+  import { shortcutHelpState } from "../lib/shortcutHelp.svelte"; // LIF-245
+  import { commandPaletteState } from "../lib/commandPaletteState.svelte"; // LIF-245
 
   const topbarCtx = getContext<{
     set: (s: import("svelte").Snippet | undefined) => void;
@@ -165,6 +168,13 @@
     error = "";
     // Don't let the previous project's tallies linger while we fetch.
     issueCounts = null;
+    // LIF-245: a stale keyboard focus/lastFocusedId from the previous
+    // project could otherwise "resurrect" onto a same-numbered issue id in
+    // the new project once its issues load (see the flatIssues-relocate
+    // effect below) — ids are global, so this is astronomically unlikely
+    // in practice, but free to rule out entirely on a project switch.
+    view.focusedIndex = -1;
+    lastFocusedId = null;
     const projRes = await listProjects();
     if (!projRes.ok) {
       error = projRes.error;
@@ -250,15 +260,22 @@
       dragActive ||
       mutationsInFlight > 0 ||
       view.sortOpen ||
-      view.hintsOpen ||
       view.displayOpen ||
       view.newMenuOpen ||
       view.filterOpen ||
       view.lanesOpen ||
       peekState.open ||
+      // LIF-245: a poll landing under the command palette or the shortcut
+      // help overlay wouldn't corrupt anything visible (both are opaque
+      // modals over the list), but it would still burn a network round
+      // trip and reset keyboard focus/selection pointlessly the moment
+      // either closes — same reasoning as the peek-open veto above.
+      commandPaletteState.open ||
+      shortcutHelpState.open ||
       inlineCreateActive ||
       view.statusDropdownId !== null ||
       view.priorityDropdownId !== null ||
+      view.moduleDropdownId !== null ||
       // LIF-149: a poll mustn't shuffle rows mid-selection or land stale
       // data on top of an in-flight bulk write.
       view.selectedIds.size > 0 ||
@@ -719,15 +736,43 @@
     return sortedIssues;
   });
 
-  // Reset focus when issues change — but not from a status cycle
+  // ── LIF-245: keyboard focus survives a list refetch ──────────────────
+  // `flatIssues` is a fresh array every time `issues` changes reference —
+  // which happens on every 15s auto-refresh poll, not just on a genuine
+  // reorder — so naively resetting `focusedIndex` here would drop keyboard
+  // focus out from under the user on every poll tick, even when the exact
+  // same issue is still sitting right there. Instead: remember which
+  // *issue* (by id) was focused, and when the list changes shape, try to
+  // relocate it by id in the new flatIssues before falling back to -1.
+  //
+  // `skipFocusReset` stays for the handful of call sites (s/p/status-picker
+  // mutations) that already relocate focus manually and don't want this
+  // effect to race them — those keep working unchanged; this effect's
+  // fallback logic below is what upgrades every OTHER case (auto-refresh
+  // poll, filter/search/sort/group changes) from "always drop focus" to
+  // "keep it if the issue is still visible."
   let skipFocusReset = false;
+  let lastFocusedId: number | null = null;
   $effect(() => {
-    flatIssues;
+    const flat = flatIssues;
     if (skipFocusReset) {
       skipFocusReset = false;
+    } else if (lastFocusedId !== null) {
+      view.focusedIndex = flat.findIndex((i) => i.id === lastFocusedId);
     } else {
       view.focusedIndex = -1;
     }
+  });
+
+  // Keep `lastFocusedId` in sync with whatever `focusedIndex` currently
+  // points at (from ANY source — keyboard nav, mouse hover, the relocation
+  // above, or a manual set inside a mutation handler). Plain reads of
+  // `view.focusedIndex` and `flatIssues` here are enough to track it
+  // reactively without every call site needing to remember to update it.
+  $effect(() => {
+    const idx = view.focusedIndex;
+    const flat = flatIssues;
+    lastFocusedId = idx >= 0 && idx < flat.length ? flat[idx].id : null;
   });
 
   // Scroll focused row into view — only when driven by keyboard
@@ -761,61 +806,67 @@
     });
   });
 
-  function isInputFocused(): boolean {
-    const el = document.activeElement;
-    if (!el) return false;
-    const tag = el.tagName;
-    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (el as HTMLElement).isContentEditable;
-  }
-
   function handleKeydown(e: KeyboardEvent) {
-    // LIF-244: the peek panel owns keyboard input while open (its own Esc
-    // handler closes it) — list shortcuts (j/k nav, x select, c create,
-    // s/p cycle) shouldn't fire on the row behind it while previewing.
-    if (peekState.open) return;
+    // LIF-245: single shared guard — typing in a field, the peek panel,
+    // the command palette, or the shortcut help overlay all own their own
+    // keyboard input, so list shortcuts (j/k nav, x select, c create,
+    // s/p/m pickers) must not fire on the row behind them. Replaces the
+    // old `peekState.open` early-return + a separate `isInputFocused()`
+    // check further down — both folded into one predicate in
+    // lib/shortcuts.ts so every handler in the app agrees on the rule.
+    if (shortcutsSuppressed()) return;
 
-    // Status picker keyboard navigation (inline create or row dropdown)
-    if (inlineCreateStatusOpen || view.statusDropdownId !== null) {
+    // Row picker keyboard navigation: status / priority / module dropdown,
+    // or the literal inline-create status picker. Only one can ever be
+    // open at a time (opening one closes the others — see
+    // toggleStatusDropdown/togglePriorityDropdown/toggleModuleDropdown
+    // below), so branching on which id is non-null is unambiguous.
+    if (
+      inlineCreateStatusOpen ||
+      view.statusDropdownId !== null ||
+      view.priorityDropdownId !== null ||
+      view.moduleDropdownId !== null
+    ) {
+      const moduleOptionIds: (number | null)[] = [null, ...modules.map((m) => m.id)];
+      const pickingStatus = inlineCreateStatusOpen || view.statusDropdownId !== null;
+      const pickingPriority = !pickingStatus && view.priorityDropdownId !== null;
+      const pickingModule = !pickingStatus && !pickingPriority && view.moduleDropdownId !== null;
+      const optionCount = pickingStatus
+        ? STATUSES.length
+        : pickingPriority
+          ? PRIORITIES.length
+          : moduleOptionIds.length;
+
       if (e.key === "ArrowDown" || e.key === "j") {
         e.preventDefault();
-        view.inlineCreateStatusIdx = Math.min(view.inlineCreateStatusIdx + 1, STATUSES.length - 1);
+        if (pickingStatus) view.inlineCreateStatusIdx = Math.min(view.inlineCreateStatusIdx + 1, optionCount - 1);
+        else if (pickingPriority) view.priorityPickerIdx = Math.min(view.priorityPickerIdx + 1, optionCount - 1);
+        else if (pickingModule) view.modulePickerIdx = Math.min(view.modulePickerIdx + 1, optionCount - 1);
         return;
       }
       if (e.key === "ArrowUp" || e.key === "k") {
         e.preventDefault();
-        view.inlineCreateStatusIdx = Math.max(view.inlineCreateStatusIdx - 1, 0);
+        if (pickingStatus) view.inlineCreateStatusIdx = Math.max(view.inlineCreateStatusIdx - 1, 0);
+        else if (pickingPriority) view.priorityPickerIdx = Math.max(view.priorityPickerIdx - 1, 0);
+        else if (pickingModule) view.modulePickerIdx = Math.max(view.modulePickerIdx - 1, 0);
         return;
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        const picked = STATUSES[view.inlineCreateStatusIdx];
         if (inlineCreateStatusOpen) {
           // Inline create: pick status, move to title
-          inlineCreateStatus = picked;
+          inlineCreateStatus = STATUSES[view.inlineCreateStatusIdx];
           inlineCreateStatusOpen = false;
           requestAnimationFrame(() => inlineCreateTitleEl?.focus());
         } else if (view.statusDropdownId !== null) {
-          // Existing issue row: set status
           const target = issues.find((i) => i.id === view.statusDropdownId);
-          if (target && picked !== target.status) {
-            skipFocusReset = true;
-            const targetId = target.id;
-            trackMutation(
-              updateIssueWithUndo({
-                id: targetId,
-                identifier: target.identifier,
-                patch: { status: picked },
-                prevPatch: { status: target.status },
-                modules,
-                onApplied: (patch) => {
-                  issues = issues.map((i) =>
-                    i.id === targetId ? { ...i, ...(patch as Partial<Issue>) } : i,
-                  );
-                },
-              }),
-            );
-          }
-          view.statusDropdownId = null;
+          if (target) pickRowStatus(target, STATUSES[view.inlineCreateStatusIdx]);
+        } else if (view.priorityDropdownId !== null) {
+          const target = issues.find((i) => i.id === view.priorityDropdownId);
+          if (target) pickRowPriority(target, PRIORITIES[view.priorityPickerIdx]);
+        } else if (view.moduleDropdownId !== null) {
+          const target = issues.find((i) => i.id === view.moduleDropdownId);
+          if (target) pickRowModule(target, moduleOptionIds[view.modulePickerIdx]);
         }
         return;
       }
@@ -826,19 +877,30 @@
           requestAnimationFrame(() => inlineCreateTitleEl?.focus());
         } else {
           view.statusDropdownId = null;
+          view.priorityDropdownId = null;
+          view.moduleDropdownId = null;
         }
         return;
       }
-      return; // Swallow all other keys while picker is open
+      return; // Swallow all other keys while a picker is open
     }
 
-    // Don't intercept when typing in inputs
-    if (isInputFocused()) return;
+    // ── LIF-245: keyboard row-focus + row-mutation shortcuts are scoped to
+    // list mode. Board cards have no visual "focused" state (drag-and-drop
+    // + click-to-open/peek are its interaction model — see IssueCard.svelte)
+    // so before this gate, j/k/Enter/x/s/p/m/space silently acted on
+    // whatever `flatIssues[focusedIndex]` happened to be while looking at
+    // the board — invisibly, and occasionally on a stale index left over
+    // from a prior list session (e.g. Enter would navigate to a random
+    // issue). `c` (new issue) and `/` (search) aren't row-scoped, so they
+    // stay available in both layouts, same as before.
+    const listOnly = layout === "list";
 
     switch (e.key) {
       case "ArrowDown":
       case "j":
       case "J": {
+        if (!listOnly) break;
         e.preventDefault();
         if (!canFireKey()) break;
         markKeyboardActive();
@@ -858,6 +920,7 @@
       case "ArrowUp":
       case "k":
       case "K": {
+        if (!listOnly) break;
         e.preventDefault();
         if (!canFireKey()) break;
         markKeyboardActive();
@@ -873,17 +936,41 @@
         }
         break;
       }
+      case "Home":
+        if (!listOnly || flatIssues.length === 0) break;
+        e.preventDefault();
+        markKeyboardActive();
+        scrollOnFocus = true;
+        view.focusedIndex = 0;
+        break;
+      case "End":
+        if (!listOnly || flatIssues.length === 0) break;
+        e.preventDefault();
+        markKeyboardActive();
+        scrollOnFocus = true;
+        view.focusedIndex = flatIssues.length - 1;
+        break;
       case "x":
         // Toggle selection on the focused row (LIF-149).
-        if (view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length) {
+        if (listOnly && view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length) {
           e.preventDefault();
           toggleSelect(flatIssues[view.focusedIndex].id, view.focusedIndex);
         }
         break;
       case "Enter":
-        if (view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length) {
+        if (listOnly && view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length) {
           e.preventDefault();
           navigate(`/${projectIdentifier}/issues/${flatIssues[view.focusedIndex].identifier}`);
+        }
+        break;
+      case " ":
+        // LIF-245: space opens the peek panel on the focused row (mirrors
+        // the row's hover peek button). preventDefault so the page
+        // doesn't scroll — but only once a row is actually focused, so an
+        // idle space press (before any j/k) still scrolls normally.
+        if (listOnly && view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length) {
+          e.preventDefault();
+          peekIssue(flatIssues[view.focusedIndex]);
         }
         break;
       case "c":
@@ -899,13 +986,21 @@
         e.preventDefault();
         openSearch();
         break;
-      case "?":
-        // Toggle the keyboard cheatsheet popover.
-        e.preventDefault();
-        view.hintsOpen = !view.hintsOpen;
-        break;
       case "s":
-        if (view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length && !statusUpdating && canFireKey()) {
+        // LIF-245: opens the status picker popover (same UI the row's
+        // click trigger opens) rather than cycling — see the s/p decision
+        // in the report. Cycling lives on shift+S below.
+        if (listOnly && view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length) {
+          e.preventDefault();
+          toggleStatusDropdown(flatIssues[view.focusedIndex]);
+        }
+        break;
+      case "S":
+        // Fast-path: cycle status without opening the picker. Previously
+        // bound to plain `s`; shift+S was an unbound no-op before this
+        // change (the old switch only matched lowercase "s"), so this is
+        // a pure addition, not a behavior change for existing users.
+        if (listOnly && view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length && !statusUpdating && canFireKey()) {
           e.preventDefault();
           const focusedIssue = flatIssues[view.focusedIndex];
           const focusedId = focusedIssue.id;
@@ -938,8 +1033,16 @@
         }
         break;
       case "p":
-        // LIF-191: cycle priority on the focused row (mirrors `s` for status).
-        if (view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length && canFireKey()) {
+        // LIF-245: opens the priority picker popover — mirrors `s`.
+        if (listOnly && view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length) {
+          e.preventDefault();
+          togglePriorityDropdown(flatIssues[view.focusedIndex]);
+        }
+        break;
+      case "P":
+        // Fast-path: cycle priority (previously plain `p`; shift+P was an
+        // unbound no-op before this change — see the `S` case comment).
+        if (listOnly && view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length && canFireKey()) {
           e.preventDefault();
           const pIssue = flatIssues[view.focusedIndex];
           const pId = pIssue.id;
@@ -965,11 +1068,19 @@
           );
         }
         break;
+      case "m":
+        // LIF-245: opens the module picker popover — mirrors `s`/`p`. No
+        // prior binding existed for module, so there's no cycle fast-path
+        // to preserve (module sets aren't a small fixed enum like status/
+        // priority, so cycling wouldn't be a great fit anyway).
+        if (listOnly && view.focusedIndex >= 0 && view.focusedIndex < flatIssues.length) {
+          e.preventDefault();
+          toggleModuleDropdown(flatIssues[view.focusedIndex]);
+        }
+        break;
       case "Escape":
         if (view.newMenuOpen) {
           view.newMenuOpen = false;
-        } else if (view.hintsOpen) {
-          view.hintsOpen = false;
         } else if (view.displayOpen) {
           view.displayOpen = false;
         } else if (view.lanesOpen) {
@@ -980,6 +1091,8 @@
           view.filterOpen = false;
         } else if (bulkMenu !== null) {
           bulkMenu = null;
+        } else if (view.moduleDropdownId !== null) {
+          view.moduleDropdownId = null;
         } else if (view.priorityDropdownId !== null) {
           view.priorityDropdownId = null;
         } else if (view.statusDropdownId !== null) {
@@ -1046,6 +1159,8 @@
     if (shouldAcceptMouse(e)) view.focusedIndex = idx;
   }
   function toggleStatusDropdown(issue: Issue) {
+    view.priorityDropdownId = null;
+    view.moduleDropdownId = null;
     if (view.statusDropdownId === issue.id) {
       view.statusDropdownId = null;
     } else {
@@ -1055,7 +1170,27 @@
   }
   function togglePriorityDropdown(issue: Issue) {
     view.statusDropdownId = null;
-    view.priorityDropdownId = view.priorityDropdownId === issue.id ? null : issue.id;
+    view.moduleDropdownId = null;
+    if (view.priorityDropdownId === issue.id) {
+      view.priorityDropdownId = null;
+    } else {
+      view.priorityDropdownId = issue.id;
+      view.priorityPickerIdx = Math.max(0, PRIORITIES.indexOf(issue.priority));
+    }
+  }
+  // LIF-245: mirrors toggleStatusDropdown/togglePriorityDropdown. Index 0
+  // of the picker is always "No module"; index n+1 is `modules[n]` — see
+  // IssueRow's rendering and the moduleOptionIds array in handleKeydown.
+  function toggleModuleDropdown(issue: Issue) {
+    view.statusDropdownId = null;
+    view.priorityDropdownId = null;
+    if (view.moduleDropdownId === issue.id) {
+      view.moduleDropdownId = null;
+    } else {
+      view.moduleDropdownId = issue.id;
+      const idx = issue.module_id == null ? -1 : modules.findIndex((m) => m.id === issue.module_id);
+      view.modulePickerIdx = Math.max(0, idx + 1);
+    }
   }
   function pickRowStatus(issue: Issue, status: string) {
     view.statusDropdownId = null;
@@ -1097,6 +1232,26 @@
       }),
     );
   }
+  function pickRowModule(issue: Issue, moduleId: number | null) {
+    view.moduleDropdownId = null;
+    if (moduleId === issue.module_id) return;
+    skipFocusReset = true;
+    const issueId = issue.id;
+    trackMutation(
+      updateIssueWithUndo({
+        id: issueId,
+        identifier: issue.identifier,
+        patch: { module_id: moduleId },
+        prevPatch: { module_id: issue.module_id },
+        modules,
+        onApplied: (patch) => {
+          issues = issues.map((i) =>
+            i.id === issueId ? { ...i, ...(patch as Partial<Issue>) } : i,
+          );
+        },
+      }),
+    );
+  }
 
 </script>
 
@@ -1106,8 +1261,8 @@
   onclick={() => {
     view.statusDropdownId = null;
     view.priorityDropdownId = null;
+    view.moduleDropdownId = null;
     inlineCreateStatusOpen = false;
-    view.hintsOpen = false;
     view.displayOpen = false;
     view.sortOpen = false;
     view.newMenuOpen = false;
@@ -1719,7 +1874,10 @@
     hitSnippet={issueSearchScores.get(issue.id)?.snippet ?? null}
     statusOpen={view.statusDropdownId === issue.id}
     priorityOpen={view.priorityDropdownId === issue.id}
+    moduleOpen={view.moduleDropdownId === issue.id}
     statusPickerIdx={view.inlineCreateStatusIdx}
+    priorityPickerIdx={view.priorityPickerIdx}
+    modulePickerIdx={view.modulePickerIdx}
     onOpen={openIssue}
     onPeek={peekIssue}
     onRangeSelect={rangeSelect}
@@ -1727,9 +1885,13 @@
     {onMouseEnterRow}
     onToggleStatusDropdown={toggleStatusDropdown}
     onTogglePriorityDropdown={togglePriorityDropdown}
+    onToggleModuleDropdown={toggleModuleDropdown}
     onPickStatus={pickRowStatus}
     onPickPriority={pickRowPriority}
+    onPickModule={pickRowModule}
     onHoverStatusOption={(si) => { view.inlineCreateStatusIdx = si; }}
+    onHoverPriorityOption={(pi) => { view.priorityPickerIdx = pi; }}
+    onHoverModuleOption={(mi) => { view.modulePickerIdx = mi; }}
   />
 {/snippet}
 
