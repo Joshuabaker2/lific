@@ -12,7 +12,7 @@
   import ShortcutHelp from "./ShortcutHelp.svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
-  import { getPreference, setPreference, resolveTheme, type ThemePreference } from "./theme";
+  import { getPreference, setPreference, resolveTheme, motionReduced, type ThemePreference } from "./theme";
   import { Settings, List, LayoutGrid, FileText, Plus, Layers, History, ListChecks, LayoutDashboard, Search, ChevronRight, Sun, Moon, Monitor, Menu, X, Home, TrendingUp, HelpCircle } from "lucide-svelte";
   import { setContext } from "svelte";
   import { peekState } from "./issues/peek.svelte";
@@ -153,7 +153,12 @@
   // dragActive, then persist the new order on finalize (server reindexes
   // sort_order and returns the canonical list).
   let dragActive = $state(false);
-  const FLIP_MS = 150;
+  // LIF-246: checked fresh at each drag/flip (not memoized) so a live
+  // toggle of the motion preference takes effect on the next reorder —
+  // same pattern as IssueList's flipMs().
+  function flipMs(): number {
+    return motionReduced() ? 0 : 150;
+  }
 
   function handleProjectConsider(e: CustomEvent<DndEvent<Project>>) {
     dragActive = true;
@@ -353,7 +358,7 @@
           <div
             use:dndzone={{
               items: projects,
-              flipDurationMs: FLIP_MS,
+              flipDurationMs: flipMs(),
               type: "lific-projects",
               dropTargetStyle: {},
               dragDisabled: projects.length < 2,
@@ -367,7 +372,7 @@
             <!-- One draggable item per project. animate:flip gives the reorder
                  its slide; the wrapper holds both the pill and (when open)
                  the sub-nav so they move as a unit. -->
-            <div animate:flip={{ duration: FLIP_MS }}>
+            <div animate:flip={{ duration: flipMs() }}>
             <!-- Project pill. Clicking the active project toggles its sub-nav
                  (the chevron is a real disclosure control); clicking any other
                  project navigates in and opens it. The chevron rotates with the
@@ -375,7 +380,7 @@
                  project reads as closed. -->
             <button
               class="group w-full flex items-center gap-1.5 pl-1.5 pr-2 py-1.5 rounded-md
-                     text-left text-body-sm transition-all
+                     text-left text-body-sm transition
                      {isProjectActive
                 ? 'text-[var(--text)] bg-[var(--bg-subtle)] font-medium'
                 : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-subtle)]'}"

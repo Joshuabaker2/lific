@@ -26,6 +26,7 @@
   import ProjectIcon from "../lib/ProjectIcon.svelte";
   import Mascot from "../lib/Mascot.svelte";
   import ErrorState from "../lib/ErrorState.svelte";
+  import Skeleton from "../lib/Skeleton.svelte";
   import { PRIORITIES } from "../lib/issues/grouping";
   import {
     Plus,
@@ -318,11 +319,47 @@
 <div class="h-full flex flex-col">
   <div class="flex-1 overflow-y-auto">
     {#if loading}
-      <div class="flex items-center justify-center py-20">
-        <div
-          class="size-6 rounded-full border-2 border-[var(--border)]
-                 border-t-[var(--accent)] animate-spin"
-        ></div>
+      <!-- LIF-246: mirrors the two-column dashboard shape (greeting +
+           active-issue sections on the left, recents/pinned/activity rail
+           on the right) instead of a centered spinner. -->
+      <div class="max-w-[1280px] mx-auto px-6 md:px-8 py-8 md:py-10">
+        <div class="flex items-center gap-3 mb-8">
+          <Skeleton variant="circle" class="size-11 rounded-xl" />
+          <div class="flex flex-col gap-2">
+            <Skeleton variant="bar" class="h-5 w-48" />
+            <Skeleton variant="bar" class="h-3 w-32" />
+          </div>
+        </div>
+        <div class="flex flex-col lg:flex-row gap-8 items-start">
+          <div class="flex-1 min-w-0 w-full flex flex-col gap-5">
+            {#each [0, 1] as section (section)}
+              <div class="rounded-xl bg-[var(--surface)] border border-[var(--border)] overflow-hidden">
+                <div class="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border)]">
+                  <Skeleton variant="bar" class="h-3.5 w-32" />
+                </div>
+                {#each [0, 1, 2] as row (row)}
+                  <div class="flex items-center gap-2.5 px-4 py-2.5 border-b border-[var(--border)] last:border-b-0">
+                    <Skeleton variant="circle" class="size-3.5" />
+                    <Skeleton variant="bar" class="h-3 w-16 shrink-0" />
+                    <Skeleton variant="bar" class="h-3 flex-1 max-w-[260px]" />
+                  </div>
+                {/each}
+              </div>
+            {/each}
+          </div>
+          <aside class="w-full lg:w-[340px] shrink-0 flex flex-col gap-8">
+            {#each [4, 3, 3] as rows, section (section)}
+              <div class="flex flex-col gap-2.5">
+                <Skeleton variant="bar" class="h-3 w-28" />
+                <div class="flex flex-col gap-1.5">
+                  {#each Array(rows) as _, row (row)}
+                    <Skeleton variant="bar" class="h-3 w-full" />
+                  {/each}
+                </div>
+              </div>
+            {/each}
+          </aside>
+        </div>
       </div>
     {:else if error}
       <ErrorState title="Couldn't load your dashboard" message={error}>

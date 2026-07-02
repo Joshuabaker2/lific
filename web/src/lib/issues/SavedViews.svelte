@@ -350,7 +350,7 @@
                 <button
                   class="shrink-0 size-6 grid place-items-center rounded
                          text-[var(--text-faint)] opacity-0 group-hover:opacity-100
-                         hover:text-[var(--text)] transition-all"
+                         hover:text-[var(--text)] transition"
                   title="Rename"
                   onclick={() => startRename(v)}
                 >
@@ -359,7 +359,7 @@
                 <button
                   class="shrink-0 size-6 grid place-items-center rounded
                          text-[var(--text-faint)] opacity-0 group-hover:opacity-100
-                         hover:text-[var(--error)] transition-all"
+                         hover:text-[var(--error)] transition"
                   title="Delete"
                   onclick={() => deleteView(v)}
                 >

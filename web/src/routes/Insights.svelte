@@ -19,6 +19,7 @@
   import ActorList from "../lib/insights/ActorList.svelte";
   import Mascot from "../lib/Mascot.svelte";
   import ErrorState from "../lib/ErrorState.svelte";
+  import Skeleton from "../lib/Skeleton.svelte";
   import { ChevronRight, TrendingUp, Users } from "lucide-svelte";
   import { getContext } from "svelte";
 
@@ -154,7 +155,7 @@
       <div class="inline-flex p-0.5 rounded-lg bg-[var(--bg)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.10)]">
         {#each WEEK_OPTIONS as w (w)}
           <button
-            class="px-2.5 py-1 rounded-md text-caption font-medium transition-all
+            class="px-2.5 py-1 rounded-md text-caption font-medium transition
                    {weeks === w
               ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.12)]'
               : 'text-[var(--text-muted)] hover:text-[var(--text)]'}"
@@ -171,14 +172,16 @@
 <div class="h-full flex flex-col">
   <div class="flex-1 overflow-y-auto">
     {#if loading}
+      <!-- LIF-246: unified onto the shared Skeleton component (was local
+           `animate-pulse` blocks) — same shapes/sizes as before. -->
       <div class="max-w-[1100px] mx-auto px-6 py-6 flex flex-col gap-6">
-        <div class="h-[280px] rounded-xl bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,0.06)] animate-pulse"></div>
+        <Skeleton variant="block" class="h-[280px] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" />
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           {#each [0, 1, 2] as i (i)}
-            <div class="h-[220px] rounded-xl bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,0.06)] animate-pulse"></div>
+            <Skeleton variant="block" class="h-[220px] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" />
           {/each}
         </div>
-        <div class="h-[200px] rounded-xl bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,0.06)] animate-pulse"></div>
+        <Skeleton variant="block" class="h-[200px] shadow-[0_1px_2px_rgba(0,0,0,0.06)]" />
       </div>
     {:else if error}
       <ErrorState title="Couldn't load insights" message={error}>

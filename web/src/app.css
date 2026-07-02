@@ -52,8 +52,16 @@
   --color-stone-950: #141210;
   --color-stone-975: #0a0807;
 
-  --color-indigo-400: #8b7fd4;
-  --color-indigo-500: #6e5fbd;
+  /* LIF-246: nudged from #8b7fd4/#6e5fbd — the old --accent (indigo-400)
+     against dark-mode --surface (#252c29) measured 4.14:1, just under
+     WCAG AA's 4.5:1 for normal text. Same hue (~248°), +2% lightness via
+     HSL, computed with the WCAG relative-luminance formula (not
+     eyeballed): indigo-400 vs surface now 4.52:1 (was 4.14:1), vs bg
+     6.01:1; --accent-text (stone-950) on the new indigo-400 is 5.91:1
+     (was 5.41:1) — still clears AA with room. indigo-500 (--accent-hover)
+     shifted by the same +2% L for a coherent pair. */
+  --color-indigo-400: #9287d7;
+  --color-indigo-500: #7566c0;
   --color-indigo-600: #5746a0;
   --color-indigo-700: #4a3b8a;
   --color-indigo-subtle: #ece8f8;

@@ -25,6 +25,7 @@
   import DeleteMenu from "./DeleteMenu.svelte";
   import ActivityTimeline from "./ActivityTimeline.svelte";
   import ErrorState from "./ErrorState.svelte";
+  import Skeleton from "./Skeleton.svelte";
   import { ArrowLeft, Download, PanelRight, X } from "lucide-svelte";
   import { getContext, type Snippet } from "svelte";
   import type { Activity, Comment } from "./api";
@@ -270,11 +271,34 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if loading}
-  <div class="h-full flex items-center justify-center">
-    <div
-      class="size-6 rounded-full border-2 border-[var(--border)]
-             border-t-[var(--accent)] animate-spin"
-    ></div>
+  <!-- LIF-246: title bar + paragraph blocks, matching whichever layout
+       this document will render into (two-column reserves the sidebar's
+       width so nothing reflows once data lands). -->
+  <div class="h-full flex flex-col">
+    <div class="flex-1 overflow-y-auto">
+      <div class="max-w-[1120px] mx-auto flex gap-0 min-h-full">
+        <div class="flex-1 min-w-0 px-4 py-5 sm:px-8 sm:py-6">
+          <Skeleton variant="bar" class="h-7 w-2/3 mb-6" />
+          <div class="flex flex-col gap-2.5 max-w-[640px]">
+            <Skeleton variant="bar" class="h-3.5 w-full" />
+            <Skeleton variant="bar" class="h-3.5 w-full" />
+            <Skeleton variant="bar" class="h-3.5 w-5/6" />
+            <Skeleton variant="bar" class="h-3.5 w-full mt-2" />
+            <Skeleton variant="bar" class="h-3.5 w-3/4" />
+          </div>
+        </div>
+        {#if layout === "two-column"}
+          <aside class="w-[280px] sm:w-[300px] md:w-[220px] shrink-0 py-6 px-5 hidden md:flex flex-col gap-5">
+            {#each [0, 1, 2] as i (i)}
+              <div class="flex flex-col gap-1.5">
+                <Skeleton variant="bar" class="h-2.5 w-14" />
+                <Skeleton variant="bar" class="h-3.5 w-24" />
+              </div>
+            {/each}
+          </aside>
+        {/if}
+      </div>
+    </div>
   </div>
 {:else if error}
   <ErrorState title={`Couldn't load this ${deleteNounLabel}`} message={error}>

@@ -39,6 +39,7 @@
   import Mascot from "../lib/Mascot.svelte";
   import { fuzzyMatch, buildSnippet } from "../lib/fuzzy";
   import ErrorState from "../lib/ErrorState.svelte";
+  import Skeleton from "../lib/Skeleton.svelte";
   import { getContext } from "svelte";
   import { startAutoRefresh } from "../lib/autoRefresh.svelte";
 
@@ -891,11 +892,24 @@
     }}
   >
     {#if loading}
-      <div class="flex items-center justify-center py-20">
-        <div
-          class="size-6 rounded-full border-2 border-[var(--border)]
-                 border-t-[var(--accent)] animate-spin"
-        ></div>
+      <!-- LIF-246: mimics the tree shape (a couple of folder rows, each
+           with a few indented page rows beneath) instead of a spinner. -->
+      <div class="px-6 py-4 flex flex-col gap-0.5">
+        {#each [3, 2] as pageCount, folder (folder)}
+          <div class="flex items-center gap-1.5 py-1.5">
+            <Skeleton variant="circle" class="size-3.5" />
+            <Skeleton variant="circle" class="size-[18px] rounded-md" />
+            <Skeleton variant="bar" class="h-3.5 w-32" />
+          </div>
+          <div class="ml-[15px] pl-3 border-l border-[var(--border)] flex flex-col gap-0.5">
+            {#each Array(pageCount) as _, page (page)}
+              <div class="flex items-center gap-2 py-1.5">
+                <Skeleton variant="circle" class="size-[18px] rounded-md" />
+                <Skeleton variant="bar" class="h-3.5 flex-1 max-w-[240px]" />
+              </div>
+            {/each}
+          </div>
+        {/each}
       </div>
     {:else if error}
       <ErrorState title="Couldn't load pages" message={error}>
@@ -1061,7 +1075,7 @@
                   class="group text-left rounded-xl bg-[var(--surface)] p-3
                          shadow-[0_1px_2px_rgba(0,0,0,0.06)]
                          hover:shadow-[0_6px_16px_rgba(0,0,0,0.10)]
-                         transition-all motion-safe:hover:-translate-y-0.5"
+                         transition motion-safe:hover:-translate-y-0.5"
                   onclick={() => navigate(`/${projectIdentifier}/pages/${page.id}`)}
                 >
                   <div class="flex items-start gap-2.5">
@@ -1079,7 +1093,7 @@
                         </span>
                         <span
                           class="shrink-0 text-[var(--text-faint)] opacity-0 group-hover:opacity-100
-                                 hover:text-[var(--accent)] transition-all"
+                                 hover:text-[var(--accent)] transition"
                           role="button"
                           tabindex="0"
                           title="Unpin"
@@ -1390,7 +1404,7 @@
           <!-- LIF-183: pin toggle. Always visible (accent) when pinned;
                otherwise revealed on hover. -->
           <span
-            class="shrink-0 transition-all
+            class="shrink-0 transition
                    {page.pinned
               ? 'text-[var(--accent)]'
               : 'text-[var(--text-faint)] opacity-0 group-hover:opacity-100 hover:text-[var(--accent)]'}"

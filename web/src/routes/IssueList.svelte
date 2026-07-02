@@ -21,8 +21,11 @@
   import ProjectIcon from "../lib/ProjectIcon.svelte";
   import Mascot from "../lib/Mascot.svelte";
   import ErrorState from "../lib/ErrorState.svelte";
+  import Skeleton from "../lib/Skeleton.svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
+  import { slide } from "svelte/transition";
+  import { motionReduced } from "../lib/theme";
   import { getContext } from "svelte";
   import { formatRelative } from "../lib/format";
   import { startAutoRefresh } from "../lib/autoRefresh.svelte";
@@ -93,6 +96,25 @@
   // LIF-99 Phase 3: shared view/interaction state lives in a $state class.
   // The component still owns the data layer (issues, project, fetches).
   const view = new IssueListState();
+
+  // LIF-246: shared duration for every animate:flip / dndzone
+  // flipDurationMs in this component (list-row reorder, board card
+  // drag-reorder/status-move, collapsed-column drop rail). Checked fresh
+  // at the moment each flip/drag fires (not memoized) so a live toggle of
+  // the appearance system's motion preference takes effect on the very
+  // next reorder — same call-fresh pattern as Toaster/PeekPanel's
+  // enterParams()/panelInParams().
+  function flipMs(): number {
+    return motionReduced() ? 0 : 150;
+  }
+
+  // LIF-246: group expand/collapse. `slide` animates height/padding (not
+  // transform), so it's containing-block-safe by construction — no risk
+  // to any fixed-position Select/Tooltip content nested in the rows it
+  // reveals (see the KNOWN TRAP note on transform-holding containers).
+  function slideParams() {
+    return motionReduced() ? { duration: 0 } : { duration: 150 };
+  }
 
   function priorityCssColor(p: string): string {
     switch (p) {
@@ -1282,6 +1304,7 @@
     {layout}
     {navigate}
     {statusCounts}
+    countsLoading={issueCounts === null}
     {countLabel}
     {labels}
     {modules}
@@ -1353,11 +1376,28 @@
 
     <!-- Board body -->
     {#if loading}
-      <div class="flex-1 flex items-center justify-center">
-        <div
-          class="size-6 rounded-full border-2 border-[var(--border)]
-                 border-t-[var(--accent)] animate-spin"
-        ></div>
+      <!-- LIF-246: content-shaped skeleton (3 columns × 3 cards) instead
+           of a spinner — mirrors the real column-header + card structure
+           so the board doesn't visually "pop" once data lands. -->
+      <div class="flex-1 flex overflow-hidden">
+        {#each [0, 1, 2] as col (col)}
+          <div class="w-[300px] shrink-0 flex flex-col border-r border-[var(--border)] last:border-r-0 p-2 gap-2">
+            <div class="flex items-center gap-2 px-1 py-1.5 mb-1">
+              <Skeleton variant="circle" class="size-3.5" />
+              <Skeleton variant="bar" class="h-3 w-16" />
+            </div>
+            {#each [0, 1, 2] as card (card)}
+              <div class="rounded-md border border-[var(--border)] bg-[var(--surface)] p-2.5 flex flex-col gap-2.5">
+                <div class="flex items-center justify-between">
+                  <Skeleton variant="bar" class="h-2.5 w-12" />
+                  <Skeleton variant="circle" class="size-3" />
+                </div>
+                <Skeleton variant="bar" class="h-3 w-full" />
+                <Skeleton variant="bar" class="h-3 w-2/3" />
+              </div>
+            {/each}
+          </div>
+        {/each}
       </div>
     {:else if error}
       <div class="flex-1 flex items-center justify-center">
@@ -1403,7 +1443,7 @@
               class="h-full w-full overflow-hidden"
               use:dndzone={{
                 items: colIssues,
-                flipDurationMs: 150,
+                flipDurationMs: flipMs(),
                 type: "lific-issues",
                 dropTargetStyle: {
                   outline: "2px dashed var(--accent)",
@@ -1415,7 +1455,7 @@
               onfinalize={(e) => handleFinalize(laneKey, status, e as CustomEvent<DndEvent<Issue>>)}
             >
               {#each colIssues as issue (issue.id)}
-                <div animate:flip={{ duration: 150 }} class="h-px opacity-0"></div>
+                <div animate:flip={{ duration: flipMs() }} class="h-px opacity-0"></div>
               {/each}
             </div>
             <div class="pointer-events-none absolute inset-0 flex flex-col items-center pt-2.5 pb-3 gap-2">
@@ -1506,7 +1546,7 @@
                 class="flex flex-col gap-2 flex-1 min-h-[40px]"
                 use:dndzone={{
                   items: colIssues,
-                  flipDurationMs: 150,
+                  flipDurationMs: flipMs(),
                   type: "lific-issues",
                   dropTargetStyle: {
                     outline: "2px dashed var(--accent)",
@@ -1521,7 +1561,7 @@
                 <!-- Wrapper carries animate:flip (svelte-dnd-action animates
                      each direct zone child) and is the draggable item; the
                      visual card lives in IssueCard. -->
-                <div animate:flip={{ duration: 150 }}>
+                <div animate:flip={{ duration: flipMs() }}>
                   <IssueCard
                     {issue}
                     {labels}
@@ -1698,11 +1738,23 @@
   <!-- Issue list -->
   <div class="flex-1 overflow-y-auto" bind:this={listEl}>
     {#if loading}
-      <div class="flex items-center justify-center py-20">
-        <div
-          class="size-6 rounded-full border-2 border-[var(--border)]
-                 border-t-[var(--accent)] animate-spin"
-        ></div>
+      <!-- LIF-246: 8 row-shaped skeletons (status dot + identifier +
+           title + trailing meta) instead of a centered spinner — reads
+           immediately as "issue rows incoming" rather than a generic
+           wait state. -->
+      <div>
+        {#each Array(8) as _, i (i)}
+          <div
+            class="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-3
+                   border-b border-[var(--border)] last:border-b-0"
+          >
+            <Skeleton variant="circle" class="size-4 shrink-0" />
+            <Skeleton variant="bar" class="h-3 w-[52px] sm:w-[72px] shrink-0" />
+            <Skeleton variant="bar" class="h-3.5 flex-1 max-w-[420px]" />
+            <div class="hidden sm:block flex-1"></div>
+            <Skeleton variant="bar" class="hidden sm:block h-3 w-[60px] shrink-0" />
+          </div>
+        {/each}
       </div>
     {:else if error}
       <ErrorState title="Couldn't load issues" message={error}>
@@ -1772,7 +1824,9 @@
         </div>
       {/if}
       {#each sortedIssues as issue, i (issue.id)}
-        {@render issueRow(issue, i)}
+        <div animate:flip={{ duration: flipMs() }}>
+          {@render issueRow(issue, i, i === sortedIssues.length - 1)}
+        </div>
       {/each}
     {:else if groups}
       <!-- LIF-191: grouped view (group-by status / priority / module).
@@ -1809,9 +1863,13 @@
             <span class="text-caption text-[var(--text-faint)] tabular-nums">{g.issues.length}</span>
           </button>
           {#if !collapsed}
-            {#each g.issues as issue, si (issue.id)}
-              {@render issueRow(issue, groupOffset + si)}
-            {/each}
+            <div transition:slide={slideParams()}>
+              {#each g.issues as issue, si (issue.id)}
+                <div animate:flip={{ duration: flipMs() }}>
+                  {@render issueRow(issue, groupOffset + si, si === g.issues.length - 1)}
+                </div>
+              {/each}
+            </div>
           {/if}
         </div>
       {/each}
@@ -1819,7 +1877,9 @@
       <!-- Flat list (active when a single status filter is applied, so
            grouping is skipped). Honors the same sort as grouped view. -->
       {#each sortedIssues as issue, i (issue.id)}
-        {@render issueRow(issue, i)}
+        <div animate:flip={{ duration: flipMs() }}>
+          {@render issueRow(issue, i, i === sortedIssues.length - 1)}
+        </div>
       {/each}
     {/if}
   </div>
@@ -1860,10 +1920,11 @@
  {/if}
 </div>
 
-{#snippet issueRow(issue: Issue, idx: number)}
+{#snippet issueRow(issue: Issue, idx: number, isLast: boolean = false)}
   <IssueRow
     {issue}
     {idx}
+    {isLast}
     {labels}
     {modules}
     density={view.density}

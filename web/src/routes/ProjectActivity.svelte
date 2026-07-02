@@ -26,6 +26,7 @@
     CircleDot, FileText, MessageSquare, Layers, Tag, FolderClosed, Box,
   } from "lucide-svelte";
   import ErrorState from "../lib/ErrorState.svelte";
+  import Skeleton from "../lib/Skeleton.svelte";
   import { getContext } from "svelte";
 
   const PAGE_SIZE = 50;
@@ -323,11 +324,29 @@
 <div class="h-full flex flex-col">
   <div class="flex-1 overflow-y-auto">
     {#if loading}
-      <div class="flex items-center justify-center py-20">
-        <div
-          class="size-6 rounded-full border-2 border-[var(--border)]
-                 border-t-[var(--accent)] animate-spin"
-        ></div>
+      <!-- LIF-246: feed-shaped skeleton (day header + entity-icon rows)
+           instead of a centered spinner. -->
+      <div class="flex flex-col lg:flex-row gap-8 px-8 py-6 max-w-[1280px] mx-auto items-start">
+        <div class="flex-1 min-w-0 w-full">
+          <Skeleton variant="bar" class="h-3 w-20 mb-3" />
+          <div class="flex flex-col gap-1">
+            {#each Array(6) as _, i (i)}
+              <div class="flex items-center gap-2.5 px-2.5 py-1.5">
+                <Skeleton variant="circle" class="size-3.5" />
+                <Skeleton variant="bar" class="h-3 flex-1 max-w-[420px]" />
+              </div>
+            {/each}
+          </div>
+        </div>
+        <aside class="w-full lg:w-[280px] shrink-0 flex flex-col gap-2">
+          <Skeleton variant="bar" class="h-3 w-16 mb-1" />
+          {#each Array(4) as _, i (i)}
+            <div class="flex items-center gap-2">
+              <Skeleton variant="circle" class="size-6" />
+              <Skeleton variant="bar" class="h-3 flex-1" />
+            </div>
+          {/each}
+        </aside>
       </div>
     {:else if error}
       <ErrorState title="Couldn't load activity" message={error}>

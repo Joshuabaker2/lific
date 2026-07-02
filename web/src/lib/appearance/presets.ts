@@ -11,7 +11,7 @@ import type { AccentPreset } from "../theme";
  * source of truth for the actual CSS variable values.
  */
 export const ACCENT_PRESETS: { id: AccentPreset; label: string; swatch: string }[] = [
-  { id: "indigo", label: "Indigo", swatch: "#8b7fd4" },
+  { id: "indigo", label: "Indigo", swatch: "#9287d7" },
   { id: "teal", label: "Teal", swatch: "#4dd9c7" },
   { id: "rose", label: "Rose", swatch: "#f27a9c" },
   { id: "amber", label: "Amber", swatch: "#e0a530" },

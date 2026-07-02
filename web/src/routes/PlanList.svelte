@@ -15,6 +15,7 @@
   import ProgressRing from "../lib/ProgressRing.svelte";
   import Mascot from "../lib/Mascot.svelte";
   import ErrorState from "../lib/ErrorState.svelte";
+  import Skeleton from "../lib/Skeleton.svelte";
   import { getContext } from "svelte";
 
   const topbarCtx = getContext<{
@@ -146,8 +147,22 @@
 <div class="h-full flex flex-col">
   <div class="flex-1 overflow-y-auto">
     {#if loading}
-      <div class="flex items-center justify-center py-20">
-        <div class="size-6 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)] animate-spin"></div>
+      <!-- LIF-246: mirrors the plan-card shape (ring + title/identifier +
+           fraction) instead of a centered spinner. -->
+      <div class="max-w-[860px] mx-auto px-6 py-6">
+        <Skeleton variant="bar" class="h-3 w-20 mb-2" />
+        <div class="flex flex-col gap-2">
+          {#each [0, 1, 2] as i (i)}
+            <div class="flex items-center gap-3.5 p-3 rounded-xl bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,0.06)]">
+              <Skeleton variant="circle" class="size-10" />
+              <div class="flex-1 min-w-0 flex flex-col gap-2">
+                <Skeleton variant="bar" class="h-3.5 w-1/2" />
+                <Skeleton variant="bar" class="h-2.5 w-24" />
+              </div>
+              <Skeleton variant="bar" class="h-3 w-8 shrink-0" />
+            </div>
+          {/each}
+        </div>
       </div>
     {:else if error}
       <ErrorState title="Couldn't load plans" message={error}>
@@ -225,7 +240,7 @@
                     class="group flex items-center gap-3.5 p-3 rounded-xl bg-[var(--surface)]
                            shadow-[0_1px_2px_rgba(0,0,0,0.06)]
                            hover:shadow-[0_6px_16px_rgba(0,0,0,0.10)]
-                           transition-all motion-safe:hover:-translate-y-0.5 text-left"
+                           transition motion-safe:hover:-translate-y-0.5 text-left"
                     onclick={() => navigate(`/${projectIdentifier}/plans/${plan.id}`)}
                   >
                     <ProgressRing value={frac} size={40} stroke={4} color="var(--success)">

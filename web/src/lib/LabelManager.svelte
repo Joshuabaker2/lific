@@ -342,7 +342,7 @@
           {#each PRESETS as p (p.name)}
             <button
               class="inline-flex items-center gap-1.5 text-caption font-medium px-2 py-1 rounded-full border
-                     hover:brightness-110 transition-all"
+                     hover:brightness-110 transition"
               style="color: {p.color}; border-color: {p.color}55; background: {p.color}12;"
               onclick={() => create(p.name, p.color)}
             >

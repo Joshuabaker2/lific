@@ -21,6 +21,8 @@
   import ErrorState from "./lib/ErrorState.svelte";
   import Toaster from "./lib/toast/Toaster.svelte"; // LIF-243
   import { hasSession, getInstance, autoLogin, saveSession } from "./lib/api";
+  import { motionReduced } from "./lib/theme";
+  import { fade } from "svelte/transition";
   import { onMount } from "svelte";
 
   let route = $state(window.location.hash.slice(1) || "/");
@@ -258,6 +260,21 @@
 
   let parsed = $derived(parseRoute(route));
   let onProjectChange = $state<(() => void) | undefined>();
+
+  // LIF-246: route-level fade-in. Keyed on the page *kind*, not the raw
+  // route string — "issues" and "board" collapse to the same key so
+  // toggling list/board (or navigating between projects on the same page
+  // type) doesn't retrigger the fade or force IssueList to remount (see
+  // the comment on the IssueList branch below: it's deliberately ONE
+  // branch spanning both routes for exactly this reason). The fade only
+  // replays when the page kind actually changes — a real navigation, not
+  // a prop update on the already-mounted component.
+  let routeTransitionKey = $derived(
+    parsed.type === "app" ? (parsed.page === "board" ? "issues" : parsed.page) : parsed.type,
+  );
+  function routeFadeParams() {
+    return motionReduced() ? { duration: 0 } : { duration: 120 };
+  }
 </script>
 
 {#if bootstrapping}
@@ -298,6 +315,8 @@
 {:else}
   <Layout {navigate} {route} bind:onProjectChange>
     <svelte:boundary>
+    {#key routeTransitionKey}
+    <div class="h-full" in:fade={routeFadeParams()}>
     {#if parsed.page === "home"}
       <Home {navigate} />
     {:else if parsed.page === "settings"}
@@ -353,6 +372,8 @@
     {:else if parsed.page === "insights"}
       <Insights {navigate} projectIdentifier={parsed.project} />
     {/if}
+    </div>
+    {/key}
 
       <!-- LIF-193: catch any unexpected render error from a route. Shows a
            GENERIC message only — never the raw error/stack — so an exception

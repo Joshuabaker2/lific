@@ -21,6 +21,7 @@
   let {
     issue,
     idx,
+    isLast = false,
     labels,
     modules,
     density,
@@ -52,6 +53,12 @@
   }: {
     issue: Issue;
     idx: number;
+    /** LIF-246: last row in its group/list — drives the border like the
+     *  old `last:border-b-0` did. Explicit now (not CSS `:last-child`)
+     *  because each row is wrapped in its own animate:flip div for the
+     *  reorder glide, which would make `:last-child` match every row
+     *  (each is the sole child of its own wrapper). */
+    isLast?: boolean;
     labels: Label[];
     modules: Module[];
     density: "compact" | "comfortable";
@@ -106,7 +113,7 @@
 <div
   class="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-6 text-left
          {density === 'comfortable' ? 'py-3' : 'py-2.5'}
-         border-b border-[var(--border)] last:border-b-0
+         {isLast ? '' : 'border-b border-[var(--border)]'}
          border-l-2 transition-colors group cursor-pointer
          {isFocused ? 'border-l-[var(--accent)]' : 'border-l-transparent'}
          {isSelected || isFocused
@@ -142,7 +149,7 @@
        anywhere, then stays visible for the session of that selection. -->
   <button
     class="size-4 shrink-0 rounded border flex items-center justify-center
-           transition-all
+           transition
            {isSelected
       ? 'bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-text)]'
       : 'border-[var(--border)] text-transparent hover:border-[var(--text-faint)]'}

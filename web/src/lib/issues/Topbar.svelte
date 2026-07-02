@@ -17,6 +17,7 @@
   } from "lucide-svelte";
   import Tooltip from "../Tooltip.svelte";
   import StatusIcon from "../StatusIcon.svelte";
+  import Skeleton from "../Skeleton.svelte";
   import FilterModal from "./FilterModal.svelte";
   import SavedViews from "./SavedViews.svelte";
   import type { SortField } from "./sort";
@@ -30,6 +31,7 @@
     layout,
     navigate,
     statusCounts,
+    countsLoading = false,
     countLabel,
     labels,
     modules,
@@ -44,6 +46,10 @@
     layout: "list" | "board";
     navigate: (path: string) => void;
     statusCounts: { status: string; count: number }[];
+    /** LIF-246: true until the counts fetch resolves — swaps the tally
+     *  cluster for skeleton chips of the same width instead of the bare
+     *  gap that used to sit there for that one frame. */
+    countsLoading?: boolean;
     countLabel: string;
     /** Label + module lists feed the filter modal's Label / Module sections. */
     labels: Label[];
@@ -90,7 +96,7 @@
     >
       <button
         class="flex items-center gap-1 px-2 py-0.5 rounded
-               text-caption font-medium transition-all
+               text-caption font-medium transition
                {layout === 'list'
           ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.16),0_1px_1px_rgba(0,0,0,0.10)]'
           : 'text-[var(--text-muted)] hover:text-[var(--text)]'}"
@@ -102,7 +108,7 @@
       </button>
       <button
         class="flex items-center gap-1 px-2 py-0.5 rounded
-               text-caption font-medium transition-all
+               text-caption font-medium transition
                {layout === 'board'
           ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.16),0_1px_1px_rgba(0,0,0,0.10)]'
           : 'text-[var(--text-muted)] hover:text-[var(--text)]'}"
@@ -117,7 +123,13 @@
     <!-- LIF-161: per-status tallies (server truth, immune to the list fetch
          cap). Clicking one toggles the matching status filter. Gated on at
          least one non-zero tally. -->
-    {#if statusCounts.some((s) => s.count > 0)}
+    {#if countsLoading}
+      <div class="hidden md:flex items-center gap-1">
+        {#each [0, 1, 2] as i (i)}
+          <Skeleton variant="bar" class="h-6 w-11 rounded" />
+        {/each}
+      </div>
+    {:else if statusCounts.some((s) => s.count > 0)}
       <div class="hidden md:flex items-center gap-0.5">
         {#each statusCounts as { status, count } (status)}
           {#if count > 0}

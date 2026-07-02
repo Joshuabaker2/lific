@@ -403,7 +403,7 @@
                   class="group text-left rounded-xl bg-[var(--surface)] p-4
                          shadow-[0_1px_2px_rgba(0,0,0,0.06)]
                          hover:shadow-[0_6px_16px_rgba(0,0,0,0.10)]
-                         transition-all motion-safe:hover:-translate-y-0.5"
+                         transition motion-safe:hover:-translate-y-0.5"
                   onclick={() =>
                     navigate(`/${projectIdentifier}/modules/${mod.id}`)}
                 >
