@@ -1,5 +1,28 @@
 # Changelog
 
+## v2.0.0 (2026-07-02)
+
+The UX overhaul. Ten features that move the web UI from complete to fast, personal, and pleasant — a real home page, analytics, saved views, undo, a peek panel, full keyboard control, and a theming system, finished with motion and skeleton polish. No breaking API changes; the major bump marks the scale of the interface change.
+
+### A place to land
+
+- **My Work home dashboard**: the new default landing page — your active issues grouped by project, recently viewed items, pinned pages, a cross-project activity digest, and quick actions. Login and signup land here now.
+- **Insights**: a per-project analytics tab — created-vs-closed weekly trends (hand-rolled SVG, reopen-aware closure counting), current status/priority/module distributions, and most-active actors, with a 4/12/26/52-week window.
+
+### A faster issue surface
+
+- **Saved views**: persist any filter/group/sort/layout combo as a named per-user view, switchable from the topbar, with a default view that auto-applies per project. Private to each user, project-visibility enforced.
+- **Board v2**: swimlanes by module or priority (drag across a lane updates both status and the lane field in one move), collapsible columns that stay valid drop targets, and proper scroll-snap columns on mobile.
+- **Issue peek panel**: preview an issue in a slide-over (bottom sheet on mobile) without leaving the list or board — quick status/priority/module edits included. Cmd/ctrl-click a board card or use the row's hover affordance.
+- **Keyboard-first navigation**: j/k focus that survives refetches, x to select, enter to open, space to peek, s/p/m open pickers on the focused row (shift+S/P keep the old quick-cycle), and a `?` help overlay generated from a single shortcut registry so it can't drift from reality.
+- **Undo**: status, priority, and module changes — from the list, board drags, detail view, and bulk operations — now confirm with a toast carrying a real Undo action. One unified toast system across the app (accessible live regions, hover/focus pauses dismissal).
+
+### Everywhere else
+
+- **Issue references come alive**: bare identifiers (LIF-42, PROJ-DOC-3) auto-link in all rendered markdown (code blocks correctly excluded), show rich hover preview cards, and autocomplete in every editor via `#` or an identifier prefix at the caret.
+- **Appearance system**: six accent presets (all AA-verified in both modes, including a fix to the stock indigo dark-mode contrast), comfortable/compact density, three font scales, and a reduced-motion preference that every animation in the app honors — applied before first paint, no flash.
+- **Motion & loading polish**: content-shaped skeletons replace spinners on every heavy route, list rows and board cards glide on reorder, routes fade in quietly, and transition durations are normalized app-wide.
+
 ## v1.7.0 (2026-07-02)
 
 Lific gets real authorization. Until now, authentication was a door with no rooms behind it: any logged-in account — and any connected agent — could read, edit, or delete content in every project. This release adds project-scoped membership and roles, enforced identically across the REST API and every MCP tool, so an agent holds exactly the authority its owner granted it and nothing more.
