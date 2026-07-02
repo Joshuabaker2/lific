@@ -60,6 +60,10 @@ urlencoding = "2"
 
 # Config
 toml = "0.8"
+# toml_edit: format-preserving TOML round-trip for `lific connect` writing into
+# Codex's config.toml — inserting only [mcp_servers.lific] while keeping the
+# user's existing keys, comments, and layout intact.
+toml_edit = "0.22"
 dirs = "6"
 
 # Utilities

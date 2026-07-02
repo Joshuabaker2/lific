@@ -744,6 +744,65 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
 
+        Command::Connect {
+            clients,
+            scope,
+            stdio,
+            url,
+            key,
+            user,
+            yes,
+            dry_run,
+            skip_agents,
+        } => {
+            let json = cli::term::wants_json(cli.json);
+            let scope = match scope.as_str() {
+                "global" => cli::connect::clients::Scope::Global,
+                "project" => cli::connect::clients::Scope::Project,
+                other => {
+                    return Err(format!(
+                        "invalid --scope '{other}' (expected 'global' or 'project')"
+                    )
+                    .into());
+                }
+            };
+
+            let base = cli::connect::production_base()?;
+            let pool = db::open(&cfg.database.path)?;
+            actor::set_default_transport(actor::Transport::Cli);
+
+            let args = cli::connect::ConnectArgs {
+                clients,
+                scope,
+                stdio,
+                url,
+                key,
+                user,
+                yes,
+                dry_run,
+                skip_agents,
+            };
+            let result = cli::connect::run(&args, &cfg, &pool, &base)?;
+            cli::connect::print_result(&result, json);
+            return Ok(());
+        }
+
+        Command::AgentsMd { path, project } => {
+            let json = cli::term::wants_json(cli.json);
+            let target = path.unwrap_or_else(|| std::path::PathBuf::from("AGENTS.md"));
+            let action = cli::agents_md::write(&target, project.as_deref())?;
+            if json {
+                let out = serde_json::json!({
+                    "path": target.display().to_string(),
+                    "action": action.as_str(),
+                });
+                println!("{}", serde_json::to_string_pretty(&out)?);
+            } else {
+                println!("AGENTS.md {}: {}", action.as_str(), target.display());
+            }
+            return Ok(());
+        }
+
         Command::Mcp => {
             tracing_subscriber::fmt()
                 .with_env_filter(

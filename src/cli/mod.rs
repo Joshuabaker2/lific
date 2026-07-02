@@ -1,3 +1,5 @@
+pub mod agents_md;
+pub mod connect;
 pub mod doctor;
 pub mod exec;
 pub mod term;
@@ -61,6 +63,72 @@ pub enum Command {
 
     /// Generate a default lific.toml config file
     Init,
+
+    /// Write Lific's MCP config into your AI clients (the fastest way to
+    /// connect an editor/agent to this Lific instance).
+    ///
+    /// With no --client and an interactive terminal, probes for installed
+    /// clients and lets you pick. Non-interactively you must name at least one
+    /// --client and pass --yes. A single API key is minted (or reused via
+    /// --key) and shared by all selected clients this run.
+    Connect {
+        /// Client id to configure (repeatable). Known ids: opencode,
+        /// claude-code, claude-desktop, cursor, vscode, codex, zed, gemini,
+        /// windsurf, goose, crush.
+        #[arg(long = "client")]
+        clients: Vec<String>,
+
+        /// Scope to write: global (user home, default) or project (this repo).
+        #[arg(long, default_value = "global")]
+        scope: String,
+
+        /// Write the local stdio form (`lific --db <db> mcp`) instead of a
+        /// remote HTTP server. No API key is needed.
+        #[arg(long)]
+        stdio: bool,
+
+        /// Override the MCP URL (default: server.public_url, else
+        /// http://127.0.0.1:<port>/mcp).
+        #[arg(long)]
+        url: Option<String>,
+
+        /// Use this API key verbatim instead of minting one.
+        #[arg(long)]
+        key: Option<String>,
+
+        /// User who should own the minted connection key (it inherits their
+        /// project access under authorization enforcement).
+        #[arg(long)]
+        user: Option<String>,
+
+        /// Proceed without interactive prompts (required non-interactively).
+        #[arg(long)]
+        yes: bool,
+
+        /// Print what would be written without touching any files.
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+
+        /// Don't write/update ./AGENTS.md.
+        #[arg(long = "skip-agents")]
+        skip_agents: bool,
+    },
+
+    /// Write or update the Lific block in a project's AGENTS.md so agents in
+    /// that repo know it uses Lific for issue tracking (LIF-251).
+    ///
+    /// Idempotent: re-running replaces the marker-delimited block in place and
+    /// preserves everything around it. Creates AGENTS.md if missing.
+    AgentsMd {
+        /// Path to the AGENTS.md file (default: ./AGENTS.md).
+        #[arg(long)]
+        path: Option<PathBuf>,
+
+        /// Project identifier to bake into the CLI examples (e.g. LIF). If
+        /// omitted, a generic placeholder is used with a discovery note.
+        #[arg(long)]
+        project: Option<String>,
+    },
 
     /// Generate shell completions (e.g. `lific completion fish | source`)
     Completion {
@@ -807,6 +875,106 @@ mod tests {
         match cli.command {
             Command::Doctor { key } => assert_eq!(key, Some("lific_sk-live-abc".into())),
             _ => panic!("expected Doctor"),
+        }
+    }
+
+    // ── connect / agents-md parse tests ──────────────────────
+
+    #[test]
+    fn parse_connect_defaults() {
+        let cli = Cli::try_parse_from(["lific", "connect"]).unwrap();
+        match cli.command {
+            Command::Connect {
+                clients,
+                scope,
+                stdio,
+                url,
+                key,
+                user,
+                yes,
+                dry_run,
+                skip_agents,
+            } => {
+                assert!(clients.is_empty());
+                assert_eq!(scope, "global");
+                assert!(!stdio);
+                assert!(url.is_none());
+                assert!(key.is_none());
+                assert!(user.is_none());
+                assert!(!yes);
+                assert!(!dry_run);
+                assert!(!skip_agents);
+            }
+            _ => panic!("expected Connect"),
+        }
+    }
+
+    #[test]
+    fn parse_connect_repeatable_client_and_flags() {
+        let cli = Cli::try_parse_from([
+            "lific", "connect",
+            "--client", "opencode",
+            "--client", "codex",
+            "--scope", "project",
+            "--stdio",
+            "--url", "http://127.0.0.1:9000/mcp",
+            "--key", "lific_sk-live-K",
+            "--user", "blake",
+            "--yes",
+            "--dry-run",
+            "--skip-agents",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Connect {
+                clients,
+                scope,
+                stdio,
+                url,
+                key,
+                user,
+                yes,
+                dry_run,
+                skip_agents,
+            } => {
+                assert_eq!(clients, vec!["opencode".to_string(), "codex".to_string()]);
+                assert_eq!(scope, "project");
+                assert!(stdio);
+                assert_eq!(url, Some("http://127.0.0.1:9000/mcp".into()));
+                assert_eq!(key, Some("lific_sk-live-K".into()));
+                assert_eq!(user, Some("blake".into()));
+                assert!(yes);
+                assert!(dry_run);
+                assert!(skip_agents);
+            }
+            _ => panic!("expected Connect"),
+        }
+    }
+
+    #[test]
+    fn parse_agents_md_defaults() {
+        let cli = Cli::try_parse_from(["lific", "agents-md"]).unwrap();
+        match cli.command {
+            Command::AgentsMd { path, project } => {
+                assert!(path.is_none());
+                assert!(project.is_none());
+            }
+            _ => panic!("expected AgentsMd"),
+        }
+    }
+
+    #[test]
+    fn parse_agents_md_with_path_and_project() {
+        let cli = Cli::try_parse_from([
+            "lific", "agents-md", "--path", "docs/AGENTS.md", "--project", "LIF",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::AgentsMd { path, project } => {
+                assert_eq!(path, Some(PathBuf::from("docs/AGENTS.md")));
+                assert_eq!(project, Some("LIF".into()));
+            }
+            _ => panic!("expected AgentsMd"),
         }
     }
 
