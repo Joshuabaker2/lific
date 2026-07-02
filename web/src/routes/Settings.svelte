@@ -19,10 +19,16 @@
   import SettingsTabs from "../lib/SettingsTabs.svelte";
   import {
     getPreference, setPreference, type ThemePreference,
+    getAccent, setAccent, type AccentPreset,
+    getDensity, setDensity, type Density,
+    getFontScale, setFontScale, type FontScale,
+    getMotionPreference, setMotionPreference, type MotionPreference,
   } from "../lib/theme";
+  import { ACCENT_PRESETS } from "../lib/appearance/presets";
   import {
     Plug, Check, Copy, X, AlertTriangle, Sun, Moon, Monitor,
     Palette, Lock, LogOut, Eye, EyeOff, KeyRound, FileCode2, Terminal,
+    Rows3, Rows2, Type, Zap, ZapOff,
   } from "lucide-svelte";
   import { getContext } from "svelte";
 
@@ -143,6 +149,10 @@
 
   // Appearance
   let themePref = $state<ThemePreference>("system");
+  let accentPref = $state<AccentPreset>("indigo");
+  let densityPref = $state<Density>("comfortable");
+  let fontScalePref = $state<FontScale>("md");
+  let motionPref = $state<MotionPreference>("system");
 
   // Security
   let curPw = $state("");
@@ -154,6 +164,10 @@
 
   $effect(() => {
     themePref = getPreference();
+    accentPref = getAccent();
+    densityPref = getDensity();
+    fontScalePref = getFontScale();
+    motionPref = getMotionPreference();
     loadUser();
   });
 
@@ -187,6 +201,26 @@
   function pickTheme(p: ThemePreference) {
     themePref = p;
     setPreference(p);
+  }
+
+  function pickAccent(p: AccentPreset) {
+    accentPref = p;
+    setAccent(p);
+  }
+
+  function pickDensity(p: Density) {
+    densityPref = p;
+    setDensity(p);
+  }
+
+  function pickFontScale(p: FontScale) {
+    fontScalePref = p;
+    setFontScale(p);
+  }
+
+  function pickMotion(p: MotionPreference) {
+    motionPref = p;
+    setMotionPreference(p);
   }
 
   async function submitPassword() {
@@ -383,6 +417,92 @@
               {label}
             </button>
           {/each}
+        </div>
+
+        <!-- Accent color -->
+        <div class="mt-5 pt-5 border-t border-[var(--border)]">
+          <span class="block text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-2.5">Accent color</span>
+          <div class="flex items-center gap-2.5 flex-wrap">
+            {#each ACCENT_PRESETS as preset (preset.id)}
+              <button
+                type="button"
+                class="size-8 shrink-0 rounded-full transition-transform motion-safe:active:scale-90
+                       {accentPref === preset.id ? 'ring-2 ring-offset-2 ring-offset-[var(--surface)] ring-[var(--text)]' : 'hover:scale-110'}"
+                style:background-color={preset.swatch}
+                onclick={() => pickAccent(preset.id)}
+                title={preset.label}
+                aria-label="Accent: {preset.label}"
+                aria-pressed={accentPref === preset.id}
+              >
+                {#if accentPref === preset.id}
+                  <Check size={14} class="mx-auto text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.4)]" />
+                {/if}
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        <!-- Density -->
+        <div class="mt-5 pt-5 border-t border-[var(--border)]">
+          <span class="block text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-2.5">Density</span>
+          <div class="inline-flex p-0.5 rounded-lg bg-[var(--bg)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.10)]">
+            {#each [["comfortable", "Comfortable", Rows3], ["compact", "Compact", Rows2]] as [val, label, Icon]}
+              {@const IconComp = Icon as typeof Rows3}
+              <button
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-body-sm font-medium transition-all
+                       {densityPref === val
+                  ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.12)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'}"
+                onclick={() => pickDensity(val as Density)}
+              >
+                <IconComp size={14} />
+                {label}
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        <!-- Text size -->
+        <div class="mt-5 pt-5 border-t border-[var(--border)]">
+          <span class="flex items-center gap-1.5 text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-2.5">
+            <Type size={12} /> Text size
+          </span>
+          <div class="inline-flex p-0.5 rounded-lg bg-[var(--bg)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.10)]">
+            {#each [["sm", "S"], ["md", "M"], ["lg", "L"]] as [val, label]}
+              <button
+                class="px-3.5 py-1.5 rounded-md text-body-sm font-medium transition-all
+                       {fontScalePref === val
+                  ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.12)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'}"
+                onclick={() => pickFontScale(val as FontScale)}
+              >
+                {label}
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        <!-- Motion -->
+        <div class="mt-5 pt-5 border-t border-[var(--border)]">
+          <span class="block text-micro font-semibold uppercase tracking-widest text-[var(--text-faint)] mb-2.5">Motion</span>
+          <div class="inline-flex p-0.5 rounded-lg bg-[var(--bg)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.10)]">
+            {#each [["system", "System", Monitor], ["reduced", "Reduced", ZapOff], ["full", "Full", Zap]] as [val, label, Icon]}
+              {@const IconComp = Icon as typeof Monitor}
+              <button
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-body-sm font-medium transition-all
+                       {motionPref === val
+                  ? 'bg-[var(--surface)] text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.12)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'}"
+                onclick={() => pickMotion(val as MotionPreference)}
+              >
+                <IconComp size={14} />
+                {label}
+              </button>
+            {/each}
+          </div>
+          <p class="text-caption text-[var(--text-muted)] mt-2">
+            System honors your OS's reduce-motion setting.
+          </p>
         </div>
       </section>
 
