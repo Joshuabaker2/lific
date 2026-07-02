@@ -330,6 +330,10 @@ fn settings_json(s: &crate::db::queries::settings::InstanceSettings) -> serde_js
         "session_lifetime_days": s.session_lifetime_days,
         "login_message": s.login_message,
         "web_auto_login": s.web_auto_login,
+        // LIF-197: the operator toggle for epic LIF-194's project-scoped
+        // authorization (src/authz.rs). Off by default — see that module's
+        // doc comment for the full legacy-vs-enforced mode split.
+        "authz_enforced": s.authz_enforced,
     })
 }
 
@@ -351,6 +355,10 @@ pub(super) struct InstanceSettingsPatchReq {
     session_lifetime_days: Option<i64>,
     login_message: Option<String>,
     web_auto_login: Option<bool>,
+    /// LIF-197: the operator toggle for LIF-194's project-scoped
+    /// authorization. Off by default; flipping it takes effect on the very
+    /// next request (see `src/authz.rs`'s runtime-read doc comment).
+    authz_enforced: Option<bool>,
 }
 
 /// PATCH /api/instance/settings — partial update, admin only.
@@ -367,10 +375,7 @@ pub(super) async fn instance_settings_patch(
         session_lifetime_days: input.session_lifetime_days,
         login_message: input.login_message,
         web_auto_login: input.web_auto_login,
-        // authz_enforced is not exposed on this endpoint yet — LIF-196 only
-        // ships the enforcement primitive. Toggling it is wired up by a
-        // later issue (LIF-197/198/199) once handlers actually enforce it.
-        authz_enforced: None,
+        authz_enforced: input.authz_enforced,
     };
     let s = with_write(&db, move |conn| crate::db::queries::settings::update(conn, patch))?;
     Ok(Json(settings_json(&s)))
@@ -890,6 +895,25 @@ mod tests {
         let pub_data = parse_json(json_get(&app, "/api/instance").await).await;
         assert_eq!(pub_data["allow_signup"], false);
         assert_eq!(pub_data["instance_name"], "Acme Eng");
+    }
+
+    // LIF-197: the operator toggle for LIF-194's project-scoped
+    // authorization. Defaults off, round-trips through the admin PATCH, and
+    // rides along in both the admin GET and the settings_json() shape.
+    #[tokio::test]
+    async fn instance_settings_exposes_authz_enforced_toggle() {
+        let app = test_app();
+
+        let data = parse_json(json_get(&app, "/api/instance/settings").await).await;
+        assert_eq!(data["authz_enforced"], false, "off by default");
+
+        let patch = json_patch(&app, "/api/instance/settings", serde_json::json!({ "authz_enforced": true }))
+            .await;
+        assert_eq!(patch.status(), StatusCode::OK);
+        assert_eq!(parse_json(patch).await["authz_enforced"], true);
+
+        let data = parse_json(json_get(&app, "/api/instance/settings").await).await;
+        assert_eq!(data["authz_enforced"], true, "persisted");
     }
 
     #[tokio::test]

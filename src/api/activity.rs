@@ -1,16 +1,47 @@
 //! LIF-156: REST read surface for the audit log (captured in migration
 //! 018's triggers — see queries::activity for the read layer).
 
-use axum::extract::{Json, Path, Query, State};
+use axum::{
+    Extension,
+    extract::{Json, Path, Query, State},
+};
 
+use crate::authz;
 use crate::db::queries::activity::{ActivityScope, actor_stats, list_activity};
 use crate::db::{
     DbPool,
-    models::{ActivityFeed, ActorStat},
+    models::{ActivityFeed, ActorStat, AuthUser, Role},
 };
 use crate::error::LificError;
 
 use super::with_read;
+
+/// Resolve the `project_id` an activity scope belongs to, for the
+/// `Viewer` gate (LIF-197 scope item 2: single-resource reads resolve
+/// project_id from the target then check). Workspace-level pages
+/// (`project_id = None`) fall back to admin-only.
+async fn require_scope_viewer(
+    db: &DbPool,
+    auth_user: &Option<AuthUser>,
+    scope: &ActivityScope,
+) -> Result<(), LificError> {
+    let project_id: Option<i64> = match *scope {
+        ActivityScope::Issue(id) => {
+            Some(with_read(db, |conn| crate::db::queries::get_issue(conn, id))?.project_id)
+        }
+        ActivityScope::Page(id) => {
+            with_read(db, |conn| crate::db::queries::get_page(conn, id))?.project_id
+        }
+        ActivityScope::Plan(id) => Some(
+            with_read(db, |conn| crate::db::queries::plans::get_plan(conn, id))?.project_id,
+        ),
+        ActivityScope::Project(id) => Some(id),
+    };
+    match project_id {
+        Some(pid) => authz::require_role(db, auth_user, pid, Role::Viewer),
+        None => authz::require_workspace_admin(db, auth_user),
+    }
+}
 
 #[derive(Debug, serde::Deserialize)]
 pub(super) struct ActivityQuery {
@@ -22,59 +53,61 @@ pub(super) struct ActivityQuery {
 /// comments, label attach/detach, and relation link/unlink events.
 pub(super) async fn issue_activity(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
     Query(q): Query<ActivityQuery>,
 ) -> Result<Json<ActivityFeed>, LificError> {
-    with_read(&db, |conn| {
-        list_activity(conn, ActivityScope::Issue(id), q.limit, q.offset)
-    })
-    .map(Json)
+    let scope = ActivityScope::Issue(id);
+    require_scope_viewer(&db, &auth_user, &scope).await?;
+    with_read(&db, |conn| list_activity(conn, scope, q.limit, q.offset)).map(Json)
 }
 
 /// GET /api/pages/{id}/activity
 pub(super) async fn page_activity(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
     Query(q): Query<ActivityQuery>,
 ) -> Result<Json<ActivityFeed>, LificError> {
-    with_read(&db, |conn| {
-        list_activity(conn, ActivityScope::Page(id), q.limit, q.offset)
-    })
-    .map(Json)
+    let scope = ActivityScope::Page(id);
+    require_scope_viewer(&db, &auth_user, &scope).await?;
+    with_read(&db, |conn| list_activity(conn, scope, q.limit, q.offset)).map(Json)
 }
 
 /// GET /api/plans/{id}/activity — the plan's own edits plus every step
 /// create/edit/done/move/delete and the issue-driven cascade rows.
 pub(super) async fn plan_activity(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
     Query(q): Query<ActivityQuery>,
 ) -> Result<Json<ActivityFeed>, LificError> {
-    with_read(&db, |conn| {
-        list_activity(conn, ActivityScope::Plan(id), q.limit, q.offset)
-    })
-    .map(Json)
+    let scope = ActivityScope::Plan(id);
+    require_scope_viewer(&db, &auth_user, &scope).await?;
+    with_read(&db, |conn| list_activity(conn, scope, q.limit, q.offset)).map(Json)
 }
 
 /// GET /api/projects/{id}/activity — everything in the project, newest
 /// first: issues, pages, comments, modules, labels, folders.
 pub(super) async fn project_activity(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
     Query(q): Query<ActivityQuery>,
 ) -> Result<Json<ActivityFeed>, LificError> {
-    with_read(&db, |conn| {
-        list_activity(conn, ActivityScope::Project(id), q.limit, q.offset)
-    })
-    .map(Json)
+    let scope = ActivityScope::Project(id);
+    require_scope_viewer(&db, &auth_user, &scope).await?;
+    with_read(&db, |conn| list_activity(conn, scope, q.limit, q.offset)).map(Json)
 }
 
 /// GET /api/projects/{id}/activity/actors — per-actor rollup, most
 /// active first (LIF-158: actor rail + expanded-entry stats).
 pub(super) async fn project_activity_actors(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
 ) -> Result<Json<Vec<ActorStat>>, LificError> {
+    authz::require_role(&db, &auth_user, id, Role::Viewer)?;
     with_read(&db, |conn| actor_stats(conn, id)).map(Json)
 }
 

@@ -3,10 +3,11 @@ use axum::{
     extract::{Json, Path, Query, State},
 };
 
+use crate::authz;
 use crate::db::{DbPool, models::*};
 use crate::error::LificError;
 
-use super::{require_project_lead, with_read, with_write};
+use super::{require_structure_role, with_read, with_write};
 
 // ── Module endpoints ─────────────────────────────────────────
 
@@ -17,8 +18,10 @@ pub(super) struct ModuleQuery {
 
 pub(super) async fn list_modules(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Query(q): Query<ModuleQuery>,
 ) -> Result<Json<Vec<Module>>, LificError> {
+    authz::require_role(&db, &auth_user, q.project_id, Role::Viewer)?;
     with_read(&db, |conn| {
         crate::db::queries::list_modules(conn, q.project_id)
     })
@@ -27,9 +30,12 @@ pub(super) async fn list_modules(
 
 pub(super) async fn get_module(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
 ) -> Result<Json<Module>, LificError> {
-    with_read(&db, |conn| crate::db::queries::get_module(conn, id)).map(Json)
+    let module = with_read(&db, |conn| crate::db::queries::get_module(conn, id))?;
+    authz::require_role(&db, &auth_user, module.project_id, Role::Viewer)?;
+    Ok(Json(module))
 }
 
 pub(super) async fn create_module(
@@ -37,7 +43,7 @@ pub(super) async fn create_module(
     Extension(auth_user): Extension<Option<AuthUser>>,
     Json(input): Json<CreateModule>,
 ) -> Result<Json<Module>, LificError> {
-    require_project_lead(&db, &auth_user, input.project_id)?;
+    require_structure_role(&db, &auth_user, input.project_id)?;
     with_write(&db, |conn| crate::db::queries::create_module(conn, &input)).map(Json)
 }
 
@@ -50,7 +56,7 @@ pub(super) async fn update_module(
     let project_id = with_read(&db, |conn| {
         crate::db::queries::get_resource_project_id(conn, "modules", id)
     })?;
-    require_project_lead(&db, &auth_user, project_id)?;
+    require_structure_role(&db, &auth_user, project_id)?;
     with_write(&db, |conn| {
         crate::db::queries::update_module(conn, id, &input)
     })
@@ -65,7 +71,7 @@ pub(super) async fn delete_module_handler(
     let project_id = with_read(&db, |conn| {
         crate::db::queries::get_resource_project_id(conn, "modules", id)
     })?;
-    require_project_lead(&db, &auth_user, project_id)?;
+    require_structure_role(&db, &auth_user, project_id)?;
     with_write(&db, |conn| crate::db::queries::delete_module(conn, id))?;
     Ok(Json(serde_json::json!({"deleted": true})))
 }
@@ -79,8 +85,10 @@ pub(super) struct LabelQuery {
 
 pub(super) async fn list_labels(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Query(q): Query<LabelQuery>,
 ) -> Result<Json<Vec<Label>>, LificError> {
+    authz::require_role(&db, &auth_user, q.project_id, Role::Viewer)?;
     with_read(&db, |conn| {
         crate::db::queries::list_labels(conn, q.project_id)
     })
@@ -92,7 +100,7 @@ pub(super) async fn create_label(
     Extension(auth_user): Extension<Option<AuthUser>>,
     Json(input): Json<CreateLabel>,
 ) -> Result<Json<Label>, LificError> {
-    require_project_lead(&db, &auth_user, input.project_id)?;
+    require_structure_role(&db, &auth_user, input.project_id)?;
     with_write(&db, |conn| crate::db::queries::create_label(conn, &input)).map(Json)
 }
 
@@ -105,7 +113,7 @@ pub(super) async fn update_label_handler(
     let project_id = with_read(&db, |conn| {
         crate::db::queries::get_resource_project_id(conn, "labels", id)
     })?;
-    require_project_lead(&db, &auth_user, project_id)?;
+    require_structure_role(&db, &auth_user, project_id)?;
     with_write(&db, |conn| crate::db::queries::update_label(conn, id, &input)).map(Json)
 }
 
@@ -117,7 +125,7 @@ pub(super) async fn delete_label_handler(
     let project_id = with_read(&db, |conn| {
         crate::db::queries::get_resource_project_id(conn, "labels", id)
     })?;
-    require_project_lead(&db, &auth_user, project_id)?;
+    require_structure_role(&db, &auth_user, project_id)?;
     with_write(&db, |conn| crate::db::queries::delete_label(conn, id))?;
     Ok(Json(serde_json::json!({"deleted": true})))
 }
@@ -146,7 +154,7 @@ pub(super) async fn merge_label_handler(
             "cannot merge labels across projects".into(),
         ));
     }
-    require_project_lead(&db, &auth_user, source_project)?;
+    require_structure_role(&db, &auth_user, source_project)?;
     with_write(&db, |conn| {
         crate::db::queries::merge_label(conn, id, input.into)
     })
@@ -162,8 +170,10 @@ pub(super) struct FolderQuery {
 
 pub(super) async fn list_folders_handler(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Query(q): Query<FolderQuery>,
 ) -> Result<Json<Vec<Folder>>, LificError> {
+    authz::require_role(&db, &auth_user, q.project_id, Role::Viewer)?;
     with_read(&db, |conn| {
         crate::db::queries::list_folders(conn, q.project_id)
     })
@@ -175,7 +185,7 @@ pub(super) async fn create_folder(
     Extension(auth_user): Extension<Option<AuthUser>>,
     Json(input): Json<CreateFolder>,
 ) -> Result<Json<Folder>, LificError> {
-    require_project_lead(&db, &auth_user, input.project_id)?;
+    require_structure_role(&db, &auth_user, input.project_id)?;
     with_write(&db, |conn| crate::db::queries::create_folder(conn, &input)).map(Json)
 }
 
@@ -187,7 +197,7 @@ pub(super) async fn delete_folder_handler(
     let project_id = with_read(&db, |conn| {
         crate::db::queries::get_resource_project_id(conn, "folders", id)
     })?;
-    require_project_lead(&db, &auth_user, project_id)?;
+    require_structure_role(&db, &auth_user, project_id)?;
     with_write(&db, |conn| crate::db::queries::delete_folder(conn, id))?;
     Ok(Json(serde_json::json!({"deleted": true})))
 }

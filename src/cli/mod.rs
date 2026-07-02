@@ -614,6 +614,13 @@ pub enum InstanceAction {
         /// instance is publicly reachable.
         #[arg(long = "auto-login")]
         auto_login: Option<bool>,
+
+        /// LIF-197: enable project-scoped default-deny authorization (epic
+        /// LIF-194). Off by default — today's lead/admin-only checks apply.
+        /// When true, viewer/maintainer/lead project membership is enforced
+        /// on every REST/MCP call, including reads. See `src/authz.rs`.
+        #[arg(long = "authz-enforced")]
+        authz_enforced: Option<bool>,
     },
 }
 
@@ -778,6 +785,7 @@ mod tests {
             "--session-days", "14",
             "--login-message", "Ask #it for access",
             "--auto-login", "true",
+            "--authz-enforced", "true",
         ])
         .unwrap();
         match cli.command {
@@ -790,6 +798,7 @@ mod tests {
                         session_days,
                         login_message,
                         auto_login,
+                        authz_enforced,
                     },
             } => {
                 assert_eq!(name, Some("Acme Eng".into()));
@@ -798,6 +807,7 @@ mod tests {
                 assert_eq!(session_days, Some(14));
                 assert_eq!(login_message, Some("Ask #it for access".into()));
                 assert_eq!(auto_login, Some(true));
+                assert_eq!(authz_enforced, Some(true));
             }
             _ => panic!("expected Instance Set"),
         }

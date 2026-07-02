@@ -1,55 +1,80 @@
-use axum::extract::{Json, Path, Query, State};
+use axum::{
+    Extension,
+    extract::{Json, Path, Query, State},
+};
 
+use crate::authz;
 use crate::db::queries::plans::{self, StepDoneEffect};
 use crate::db::{models::*, DbPool};
 use crate::error::LificError;
 
-use super::{with_read, with_write};
+use super::{filter_visible, with_read, with_write};
 
 pub(super) async fn list_plans(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Query(q): Query<ListPlansQuery>,
 ) -> Result<Json<Vec<Plan>>, LificError> {
-    with_read(&db, |conn| plans::list_plans(conn, &q)).map(Json)
+    if let Some(pid) = q.project_id {
+        authz::require_role(&db, &auth_user, pid, Role::Viewer)?;
+        return with_read(&db, |conn| plans::list_plans(conn, &q)).map(Json);
+    }
+    // Cross-project list (LIF-197 scope item 2): filter, don't deny.
+    let visible = authz::visible_project_ids(&db, &auth_user)?;
+    let list = with_read(&db, |conn| plans::list_plans(conn, &q))?;
+    Ok(Json(filter_visible(list, &visible, |p| Some(p.project_id))))
 }
 
 pub(super) async fn get_plan(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
 ) -> Result<Json<Plan>, LificError> {
-    with_read(&db, |conn| plans::get_plan(conn, id)).map(Json)
+    let plan = with_read(&db, |conn| plans::get_plan(conn, id))?;
+    authz::require_role(&db, &auth_user, plan.project_id, Role::Viewer)?;
+    Ok(Json(plan))
 }
 
 pub(super) async fn resolve_plan(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(identifier): Path<String>,
 ) -> Result<Json<Plan>, LificError> {
-    with_read(&db, |conn| {
+    let plan = with_read(&db, |conn| {
         let id = plans::resolve_plan_identifier(conn, &identifier)?;
         plans::get_plan(conn, id)
-    })
-    .map(Json)
+    })?;
+    authz::require_role(&db, &auth_user, plan.project_id, Role::Viewer)?;
+    Ok(Json(plan))
 }
 
 pub(super) async fn create_plan(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Json(input): Json<CreatePlan>,
 ) -> Result<Json<Plan>, LificError> {
+    authz::require_role(&db, &auth_user, input.project_id, Role::Maintainer)?;
     with_write(&db, |conn| plans::create_plan(conn, &input)).map(Json)
 }
 
 pub(super) async fn update_plan(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
     Json(input): Json<UpdatePlan>,
 ) -> Result<Json<Plan>, LificError> {
+    let project_id = with_read(&db, |conn| plans::get_plan(conn, id))?.project_id;
+    authz::require_role(&db, &auth_user, project_id, Role::Maintainer)?;
     with_write(&db, |conn| plans::update_plan(conn, id, &input)).map(Json)
 }
 
 pub(super) async fn delete_plan_handler(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
 ) -> Result<Json<serde_json::Value>, LificError> {
+    let project_id = with_read(&db, |conn| plans::get_plan(conn, id))?.project_id;
+    authz::require_role(&db, &auth_user, project_id, Role::Maintainer)?;
     with_write(&db, |conn| plans::delete_plan(conn, id))?;
     Ok(Json(serde_json::json!({"deleted": true})))
 }
@@ -65,9 +90,12 @@ pub(super) struct AddStepRequest {
 
 pub(super) async fn add_step(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(plan_id): Path<i64>,
     Json(input): Json<AddStepRequest>,
 ) -> Result<Json<Plan>, LificError> {
+    let project_id = with_read(&db, |conn| plans::get_plan(conn, plan_id))?.project_id;
+    authz::require_role(&db, &auth_user, project_id, Role::Maintainer)?;
     with_write(&db, |conn| {
         plans::add_step(
             conn,
@@ -106,9 +134,12 @@ pub(super) struct StepUpdateResponse {
 
 pub(super) async fn update_step(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path((plan_id, step_id)): Path<(i64, i64)>,
     Json(input): Json<UpdateStepRequest>,
 ) -> Result<Json<StepUpdateResponse>, LificError> {
+    let project_id = with_read(&db, |conn| plans::get_plan(conn, plan_id))?.project_id;
+    authz::require_role(&db, &auth_user, project_id, Role::Maintainer)?;
     let resp = with_write(&db, |conn| {
         plans::assert_step_in_plan(conn, plan_id, step_id)?;
         if let Some(ref t) = input.title {
@@ -145,8 +176,11 @@ pub(super) async fn update_step(
 
 pub(super) async fn delete_step_handler(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path((plan_id, step_id)): Path<(i64, i64)>,
 ) -> Result<Json<Plan>, LificError> {
+    let project_id = with_read(&db, |conn| plans::get_plan(conn, plan_id))?.project_id;
+    authz::require_role(&db, &auth_user, project_id, Role::Maintainer)?;
     with_write(&db, |conn| {
         plans::assert_step_in_plan(conn, plan_id, step_id)?;
         plans::delete_step(conn, step_id)?;

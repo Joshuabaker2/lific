@@ -1,9 +1,30 @@
-use axum::extract::{Json, Path, Query, State};
+use axum::{
+    Extension,
+    extract::{Json, Path, Query, State},
+};
 
+use crate::authz;
 use crate::db::{DbPool, models::*};
 use crate::error::LificError;
 
-use super::{with_read, with_write};
+use super::{filter_visible, with_read, with_write};
+
+/// Gate a page mutation/read by its `project_id`: project-scoped pages check
+/// `min` role on the project; workspace-level pages (`project_id = None`,
+/// the only entity besides itself that can be project-less — plans always
+/// require a project) fall back to admin-only once enforcement is on
+/// (design decision #10).
+fn require_page_role(
+    db: &DbPool,
+    auth_user: &Option<AuthUser>,
+    project_id: Option<i64>,
+    min: Role,
+) -> Result<(), LificError> {
+    match project_id {
+        Some(pid) => authz::require_role(db, auth_user, pid, min),
+        None => authz::require_workspace_admin(db, auth_user),
+    }
+}
 
 #[derive(serde::Deserialize)]
 pub(super) struct PageQuery {
@@ -24,9 +45,29 @@ pub(super) struct PageQuery {
 
 pub(super) async fn list_pages_handler(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Query(q): Query<PageQuery>,
 ) -> Result<Json<Vec<Page>>, LificError> {
-    with_read(&db, |conn| {
+    if let Some(pid) = q.project_id {
+        authz::require_role(&db, &auth_user, pid, Role::Viewer)?;
+        return with_read(&db, |conn| {
+            crate::db::queries::list_pages(
+                conn,
+                q.project_id,
+                q.folder_id,
+                q.label.as_deref(),
+                q.status.as_deref(),
+                q.order_by.as_deref(),
+                q.order.as_deref(),
+            )
+        })
+        .map(Json);
+    }
+    // Cross-project list (LIF-197 scope item 2): filter, don't deny. A
+    // workspace page (project_id None) is excluded for any non-admin once
+    // enforcement is on — see `filter_visible`'s doc comment.
+    let visible = authz::visible_project_ids(&db, &auth_user)?;
+    let pages = with_read(&db, |conn| {
         crate::db::queries::list_pages(
             conn,
             q.project_id,
@@ -36,29 +77,37 @@ pub(super) async fn list_pages_handler(
             q.order_by.as_deref(),
             q.order.as_deref(),
         )
-    })
-    .map(Json)
+    })?;
+    Ok(Json(filter_visible(pages, &visible, |p| p.project_id)))
 }
 
 pub(super) async fn get_page(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
 ) -> Result<Json<Page>, LificError> {
-    with_read(&db, |conn| crate::db::queries::get_page(conn, id)).map(Json)
+    let page = with_read(&db, |conn| crate::db::queries::get_page(conn, id))?;
+    require_page_role(&db, &auth_user, page.project_id, Role::Viewer)?;
+    Ok(Json(page))
 }
 
 pub(super) async fn create_page(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Json(input): Json<CreatePage>,
 ) -> Result<Json<Page>, LificError> {
+    require_page_role(&db, &auth_user, input.project_id, Role::Maintainer)?;
     with_write(&db, |conn| crate::db::queries::create_page(conn, &input)).map(Json)
 }
 
 pub(super) async fn update_page(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
     Json(input): Json<UpdatePage>,
 ) -> Result<Json<Page>, LificError> {
+    let project_id = with_read(&db, |conn| crate::db::queries::get_page(conn, id))?.project_id;
+    require_page_role(&db, &auth_user, project_id, Role::Maintainer)?;
     with_write(&db, |conn| {
         crate::db::queries::update_page(conn, id, &input)
     })
@@ -67,8 +116,11 @@ pub(super) async fn update_page(
 
 pub(super) async fn delete_page_handler(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
 ) -> Result<Json<serde_json::Value>, LificError> {
+    let project_id = with_read(&db, |conn| crate::db::queries::get_page(conn, id))?.project_id;
+    require_page_role(&db, &auth_user, project_id, Role::Maintainer)?;
     with_write(&db, |conn| crate::db::queries::delete_page(conn, id))?;
     Ok(Json(serde_json::json!({"deleted": true})))
 }

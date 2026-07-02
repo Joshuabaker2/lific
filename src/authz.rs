@@ -82,7 +82,6 @@ fn authz_enforced_conn(conn: &Connection) -> Result<bool, LificError> {
 /// Reads the live `instance_settings` row, so a runtime toggle takes effect
 /// on the very next call — no restart required. Exposed for LIF-197/LIF-198
 /// call sites that need to branch on the mode directly.
-#[allow(dead_code)] // wired into REST/MCP handlers by LIF-197/LIF-198
 pub fn authz_enforced(db: &DbPool) -> Result<bool, LificError> {
     let conn = db.read()?;
     authz_enforced_conn(&conn)
@@ -196,6 +195,80 @@ fn require_lead_legacy(
     }
 }
 
+/// LIF-197: gate for the module/label/folder ("structure") REST endpoints.
+/// These were lead-gated pre-LIF-194 via `require_project_lead`
+/// (`api::require_project_lead`, itself `require_role(.., Lead)`). The
+/// design loosens them to `Maintainer` once enforcement is on, but flag-OFF
+/// must keep reproducing the exact pre-existing Lead gate — if this just
+/// called `require_role(.., Maintainer)` unconditionally, the legacy branch
+/// of `require_role` treats `Maintainer` as an unconditional allow (see
+/// `require_role_legacy`), which would *regress* today's lead-only structure
+/// endpoints the moment this function is wired in, flag or no flag. So the
+/// two modes call `require_role` with two different `min` values instead of
+/// letting `require_role` infer it:
+/// - enforced: `require_role(.., Maintainer)` — the new, looser bar.
+/// - legacy: `require_role(.., Lead)` — literally what `require_project_lead`
+///   already does, unchanged.
+pub fn require_structure_role(
+    db: &DbPool,
+    auth_user: &Option<AuthUser>,
+    project_id: i64,
+) -> Result<(), LificError> {
+    if authz_enforced(db)? {
+        require_role(db, auth_user, project_id, Role::Maintainer)
+    } else {
+        require_role(db, auth_user, project_id, Role::Lead)
+    }
+}
+
+/// LIF-197: gate for `DELETE /api/projects/{id}`. Pre-LIF-194 this was
+/// `require_admin` — a strict `auth_user.is_admin` check with **no** project
+/// involvement at all (notably stricter than `require_lead_legacy`, which
+/// also lets a project's lead through). Design decision #6 loosens deletion
+/// to `Lead` once enforcement is on, but flag-OFF must keep the exact
+/// admin-only behavior — routing it through `require_role(.., Lead)`
+/// unconditionally would let a project lead delete their own project even
+/// with the flag off, which never worked before. So legacy mode reproduces
+/// `require_admin` verbatim here (deliberately not `effective_user`-aware:
+/// the pre-existing check never resolved bot ownership either).
+pub fn require_project_delete_role(
+    db: &DbPool,
+    auth_user: &Option<AuthUser>,
+    project_id: i64,
+) -> Result<(), LificError> {
+    if authz_enforced(db)? {
+        require_role(db, auth_user, project_id, Role::Lead)
+    } else {
+        match auth_user {
+            Some(user) if user.is_admin => Ok(()),
+            _ => Err(LificError::Forbidden("only an admin can do this".into())),
+        }
+    }
+}
+
+/// LIF-197: gate for mutations/reads on workspace-level (project-less)
+/// pages — the only entity that can have `project_id = NULL` (plans always
+/// require a project; see `CreatePlan.project_id: i64`). Design decision
+/// #10: admin-only once enforcement is on. Legacy mode has never gated these
+/// at all (no `require_*` call existed on the pre-LIF-194 page handlers), so
+/// flag-off stays a no-op here to avoid a behavior change.
+pub fn require_workspace_admin(
+    db: &DbPool,
+    auth_user: &Option<AuthUser>,
+) -> Result<(), LificError> {
+    if !authz_enforced(db)? {
+        return Ok(());
+    }
+    let conn = db.read()?;
+    let effective = effective_user(&conn, auth_user);
+    match &effective {
+        Some(u) if u.is_admin => Ok(()),
+        _ => Err(LificError::Forbidden(
+            "only an admin can access workspace-level pages".into(),
+        )),
+    }
+}
+
 // ── visible_project_ids ──────────────────────────────────────────
 
 /// The cross-project read filter for search / project listing / any
@@ -206,7 +279,6 @@ fn require_lead_legacy(
 /// of hidden projects). `Some(ids)` = only these project ids are visible:
 /// the effective caller's memberships (any role), or the empty set for a
 /// `None` auth user / a member of nothing.
-#[allow(dead_code)] // wired into REST/MCP list & search paths by LIF-197/LIF-198
 pub fn visible_project_ids(
     db: &DbPool,
     auth_user: &Option<AuthUser>,
@@ -584,6 +656,127 @@ mod tests {
             enable_enforcement(&conn);
         }
         assert_eq!(visible_project_ids(&pool, &None).unwrap(), Some(HashSet::new()));
+    }
+
+    // ── require_structure_role (LIF-197) ────────────────────────
+
+    #[test]
+    fn structure_role_legacy_mode_keeps_lead_gate() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let lead = seed_user(&conn, "lead", false);
+        let maintainer = seed_user(&conn, "maintainer", false);
+        let project = queries::create_project(
+            &conn,
+            &CreateProject {
+                name: "Structure Legacy".into(),
+                identifier: "SL1".into(),
+                description: String::new(),
+                emoji: None,
+                lead_user_id: Some(lead.id),
+            },
+        )
+        .unwrap()
+        .id;
+        // A plain membership (non-lead_user_id) at Maintainer must NOT be
+        // enough in legacy mode — this is the exact regression the branching
+        // helper exists to prevent.
+        upsert_member(&conn, project, maintainer.id, Role::Maintainer).unwrap();
+        drop(conn);
+
+        assert!(require_structure_role(&pool, &Some(lead), project).is_ok());
+        assert!(
+            require_structure_role(&pool, &Some(maintainer), project).is_err(),
+            "maintainer-only membership must not pass the legacy structure gate"
+        );
+    }
+
+    #[test]
+    fn structure_role_enforced_mode_loosens_to_maintainer() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        enable_enforcement(&conn);
+        let project = seed_project(&conn, "SE1");
+        let maintainer = seed_user(&conn, "maintainer", false);
+        let viewer = seed_user(&conn, "viewer", false);
+        upsert_member(&conn, project, maintainer.id, Role::Maintainer).unwrap();
+        upsert_member(&conn, project, viewer.id, Role::Viewer).unwrap();
+        drop(conn);
+
+        assert!(require_structure_role(&pool, &Some(maintainer), project).is_ok());
+        assert!(require_structure_role(&pool, &Some(viewer), project).is_err());
+    }
+
+    // ── require_project_delete_role (LIF-197) ───────────────────
+
+    #[test]
+    fn delete_role_legacy_mode_is_admin_only_even_for_the_lead() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let admin = seed_user(&conn, "admin", true);
+        let lead = seed_user(&conn, "lead", false);
+        let project = queries::create_project(
+            &conn,
+            &CreateProject {
+                name: "Delete Legacy".into(),
+                identifier: "DL1".into(),
+                description: String::new(),
+                emoji: None,
+                lead_user_id: Some(lead.id),
+            },
+        )
+        .unwrap()
+        .id;
+        drop(conn);
+
+        assert!(require_project_delete_role(&pool, &Some(admin), project).is_ok());
+        assert!(
+            require_project_delete_role(&pool, &Some(lead), project).is_err(),
+            "legacy mode's delete gate is admin-only — a lead must still be refused, matching pre-LIF-194 require_admin"
+        );
+    }
+
+    #[test]
+    fn delete_role_enforced_mode_allows_lead() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        enable_enforcement(&conn);
+        let project = seed_project(&conn, "DE1");
+        let lead = seed_user(&conn, "lead", false);
+        let maintainer = seed_user(&conn, "maintainer", false);
+        upsert_member(&conn, project, lead.id, Role::Lead).unwrap();
+        upsert_member(&conn, project, maintainer.id, Role::Maintainer).unwrap();
+        drop(conn);
+
+        assert!(require_project_delete_role(&pool, &Some(lead), project).is_ok());
+        assert!(require_project_delete_role(&pool, &Some(maintainer), project).is_err());
+    }
+
+    // ── require_workspace_admin (LIF-197) ───────────────────────
+
+    #[test]
+    fn workspace_admin_legacy_mode_is_a_no_op() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        let regular = seed_user(&conn, "regular", false);
+        drop(conn);
+
+        assert!(require_workspace_admin(&pool, &Some(regular)).is_ok());
+        assert!(require_workspace_admin(&pool, &None).is_ok());
+    }
+
+    #[test]
+    fn workspace_admin_enforced_mode_requires_admin() {
+        let pool = test_db();
+        let conn = pool.write().unwrap();
+        enable_enforcement(&conn);
+        let admin = seed_user(&conn, "admin", true);
+        let regular = seed_user(&conn, "regular", false);
+        drop(conn);
+
+        assert!(require_workspace_admin(&pool, &Some(admin)).is_ok());
+        assert!(require_workspace_admin(&pool, &Some(regular)).is_err());
+        assert!(require_workspace_admin(&pool, &None).is_err());
     }
 
     // ── Runtime toggle ────────────────────────────────────────────

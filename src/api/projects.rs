@@ -3,22 +3,33 @@ use axum::{
     extract::{Json, Path, Query, State},
 };
 
+use crate::authz;
 use crate::db::{DbPool, models::*};
 use crate::error::LificError;
 
-use super::{require_admin, require_authenticated, require_project_lead, with_read, with_write};
+use super::{
+    filter_visible, require_authenticated, require_project_delete, require_project_lead,
+    with_read, with_write,
+};
 
 pub(super) async fn list_projects(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
 ) -> Result<Json<Vec<Project>>, LificError> {
-    with_read(&db, crate::db::queries::list_projects).map(Json)
+    // Cross-project list (LIF-197 scope item 2): filter, don't deny.
+    let visible = authz::visible_project_ids(&db, &auth_user)?;
+    let projects = with_read(&db, crate::db::queries::list_projects)?;
+    Ok(Json(filter_visible(projects, &visible, |p| Some(p.id))))
 }
 
 pub(super) async fn get_project(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(id): Path<i64>,
 ) -> Result<Json<Project>, LificError> {
-    with_read(&db, |conn| crate::db::queries::get_project(conn, id)).map(Json)
+    let project = with_read(&db, |conn| crate::db::queries::get_project(conn, id))?;
+    authz::require_role(&db, &auth_user, project.id, Role::Viewer)?;
+    Ok(Json(project))
 }
 
 pub(super) async fn create_project(
@@ -72,7 +83,7 @@ pub(super) async fn delete_project_handler(
     Path(id): Path<i64>,
     Extension(auth_user): Extension<Option<AuthUser>>,
 ) -> Result<Json<serde_json::Value>, LificError> {
-    require_admin(&auth_user)?;
+    require_project_delete(&db, &auth_user, id)?;
     with_write(&db, |conn| crate::db::queries::delete_project(conn, id))?;
     Ok(Json(serde_json::json!({"deleted": true})))
 }
@@ -82,8 +93,10 @@ pub(super) async fn delete_project_handler(
 /// client-side silently undercounts past the cap.
 pub(super) async fn issue_counts(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(project_id): Path<i64>,
 ) -> Result<Json<IssueStatusCounts>, LificError> {
+    authz::require_role(&db, &auth_user, project_id, Role::Viewer)?;
     with_read(&db, |conn| {
         crate::db::queries::count_issues_by_status(conn, project_id)
     })
@@ -102,9 +115,11 @@ fn default_group_by() -> String {
 
 pub(super) async fn get_board(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(project_id): Path<i64>,
     Query(q): Query<BoardQuery>,
 ) -> Result<Json<serde_json::Value>, LificError> {
+    authz::require_role(&db, &auth_user, project_id, Role::Viewer)?;
     let issues = with_read(&db, |conn| {
         crate::db::queries::list_issues(
             conn,

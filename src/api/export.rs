@@ -1,7 +1,10 @@
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::IntoResponse;
+use axum::Extension;
 
+use crate::authz;
+use crate::db::models::{AuthUser, Role};
 use crate::db::DbPool;
 use crate::error::LificError;
 
@@ -19,8 +22,14 @@ fn content_disposition(filename: &str) -> Result<HeaderValue, LificError> {
 
 pub(super) async fn export_issue(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(identifier): Path<String>,
 ) -> Result<impl IntoResponse, LificError> {
+    let project_id = with_read(&db, |conn| {
+        let id = crate::db::queries::resolve_identifier(conn, &identifier)?;
+        Ok(crate::db::queries::get_issue(conn, id)?.project_id)
+    })?;
+    authz::require_role(&db, &auth_user, project_id, Role::Viewer)?;
     let bundle = with_read(&db, |conn| crate::export::export_issue(conn, &identifier))?;
     let file = bundle
         .files
@@ -37,8 +46,17 @@ pub(super) async fn export_issue(
 
 pub(super) async fn export_page(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(identifier): Path<String>,
 ) -> Result<impl IntoResponse, LificError> {
+    let project_id = with_read(&db, |conn| {
+        let id = crate::db::queries::resolve_page_identifier(conn, &identifier)?;
+        Ok(crate::db::queries::get_page(conn, id)?.project_id)
+    })?;
+    match project_id {
+        Some(pid) => authz::require_role(&db, &auth_user, pid, Role::Viewer)?,
+        None => authz::require_workspace_admin(&db, &auth_user)?,
+    }
     let bundle = with_read(&db, |conn| crate::export::export_page(conn, &identifier))?;
     let file = bundle
         .files
@@ -55,9 +73,13 @@ pub(super) async fn export_page(
 
 pub(super) async fn export_project(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(identifier): Path<String>,
     Query(q): Query<ProjectExportQuery>,
 ) -> Result<impl IntoResponse, LificError> {
+    let project_id =
+        with_read(&db, |conn| crate::db::queries::resolve_project_identifier(conn, &identifier))?;
+    authz::require_role(&db, &auth_user, project_id, Role::Viewer)?;
     let format = q.format.as_deref().unwrap_or("zip");
     let bundle = with_read(&db, |conn| crate::export::export_project(conn, &identifier))?;
 

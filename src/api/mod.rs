@@ -258,6 +258,49 @@ fn require_project_lead(
     crate::authz::require_role(db, auth_user, project_id, Role::Lead)
 }
 
+/// LIF-197: thin wrapper over `authz::require_structure_role` for the
+/// module/label/folder ("structure") endpoints. See that function's doc
+/// comment for why it can't just be `require_role(.., Maintainer)`.
+fn require_structure_role(
+    db: &DbPool,
+    auth_user: &Option<AuthUser>,
+    project_id: i64,
+) -> Result<(), LificError> {
+    crate::authz::require_structure_role(db, auth_user, project_id)
+}
+
+/// LIF-197: thin wrapper over `authz::require_project_delete_role`, used by
+/// `DELETE /api/projects/{id}`. See that function's doc comment for why the
+/// legacy branch reproduces `require_admin` exactly rather than delegating
+/// to `require_role(.., Lead)`.
+fn require_project_delete(
+    db: &DbPool,
+    auth_user: &Option<AuthUser>,
+    project_id: i64,
+) -> Result<(), LificError> {
+    crate::authz::require_project_delete_role(db, auth_user, project_id)
+}
+
+/// LIF-197: apply the `visible_project_ids` cross-project read filter to a
+/// list of items. `None` (unrestricted — admin, or enforcement off) keeps
+/// everything. `Some(ids)` keeps only items whose `project_id_of` result is
+/// `Some(pid)` with `pid` in `ids` — a workspace-level item (`None`
+/// project_id) is therefore excluded for any non-admin once enforcement is
+/// on, matching design decision #10 (workspace pages are admin-only).
+fn filter_visible<T>(
+    items: Vec<T>,
+    visible: &Option<std::collections::HashSet<i64>>,
+    project_id_of: impl Fn(&T) -> Option<i64>,
+) -> Vec<T> {
+    match visible {
+        None => items,
+        Some(ids) => items
+            .into_iter()
+            .filter(|it| project_id_of(it).is_some_and(|pid| ids.contains(&pid)))
+            .collect(),
+    }
+}
+
 /// Require any authenticated user (LIF-233). Used for low-stakes, instance-wide
 /// actions like sidebar project ordering, which shouldn't be gated behind
 /// per-project lead/admin rights the way structural project edits are.
@@ -286,9 +329,17 @@ async fn health() -> &'static str {
 
 async fn search(
     State(db): State<DbPool>,
+    axum::Extension(auth_user): axum::Extension<Option<AuthUser>>,
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, LificError> {
-    with_read(&db, |conn| queries::search(conn, &q)).map(Json)
+    // Cross-project read (LIF-197 scope item 2): non-visible projects are
+    // simply absent from results, not an error — even when `q.project_id`
+    // narrows the search to one project, since a non-member of that project
+    // shouldn't be able to probe its existence via a 403 vs. empty-results
+    // side channel here.
+    let visible = crate::authz::visible_project_ids(&db, &auth_user)?;
+    let results = with_read(&db, |conn| queries::search(conn, &q))?;
+    Ok(Json(filter_visible(results, &visible, |r| r.project_id)))
 }
 
 // ── Shared test helpers ──────────────────────────────────────
@@ -402,6 +453,19 @@ pub(crate) mod test_helpers {
             .unwrap()
     }
 
+    pub async fn json_delete(app: &Router, uri: &str) -> axum::response::Response {
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(uri)
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    }
+
     pub async fn json_patch(
         app: &Router,
         uri: &str,
@@ -496,6 +560,66 @@ pub(crate) mod test_helpers {
         drop(conn);
         (db, admin, lead, regular, project.id)
     }
+
+    /// LIF-197: set up a DB with `authz_enforced` ON, an admin, and a
+    /// project with a lead/maintainer/viewer member plus a non-member —
+    /// the fixture the LIF-197 flag-ON test matrix (and its LIF-198 MCP
+    /// sibling) both need. Returns
+    /// `(db, admin, lead, maintainer, viewer, non_member, project_id)`.
+    pub fn setup_membership_test() -> (DbPool, User, User, User, User, User, i64) {
+        let db = crate::db::open_memory().expect("test db");
+        let conn = db.write().unwrap();
+
+        crate::db::queries::settings::update(
+            &conn,
+            crate::db::queries::settings::InstanceSettingsPatch {
+                authz_enforced: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let mk_user = |username: &str, is_admin: bool| {
+            crate::db::queries::users::create_user(
+                &conn,
+                &CreateUser {
+                    username: username.into(),
+                    email: format!("{username}@test.com"),
+                    password: "testpassword1".into(),
+                    display_name: None,
+                    is_admin,
+                    is_bot: false,
+                },
+            )
+            .unwrap()
+        };
+
+        let admin = mk_user("admin", true);
+        let lead = mk_user("lead", false);
+        let maintainer = mk_user("maintainer", false);
+        let viewer = mk_user("viewer", false);
+        let non_member = mk_user("non_member", false);
+
+        let project = crate::db::queries::create_project(
+            &conn,
+            &CreateProject {
+                name: "Membership Test".into(),
+                identifier: "MEM".into(),
+                description: String::new(),
+                emoji: None,
+                lead_user_id: Some(lead.id),
+            },
+        )
+        .unwrap();
+
+        crate::db::queries::members::upsert_member(&conn, project.id, maintainer.id, Role::Maintainer)
+            .unwrap();
+        crate::db::queries::members::upsert_member(&conn, project.id, viewer.id, Role::Viewer)
+            .unwrap();
+
+        drop(conn);
+        (db, admin, lead, maintainer, viewer, non_member, project.id)
+    }
 }
 
 #[cfg(test)]
@@ -556,5 +680,536 @@ mod tests {
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
         let results: Vec<serde_json::Value> = serde_json::from_slice(&bytes).unwrap();
         assert!(!results.is_empty());
+    }
+}
+
+/// LIF-197: project-scoped authorization enforcement across every REST
+/// handler. Flag-ON cases exercise the full viewer/maintainer/lead matrix;
+/// the flag-OFF smoke test is the regression proof that today's behavior
+/// (all 530 pre-existing tests, run flag-OFF by default) hasn't moved.
+#[cfg(test)]
+mod authz_gating_tests {
+    use super::test_helpers::*;
+    use crate::db::models::*;
+    use axum::http::StatusCode;
+
+    // ── Reads: single-resource Viewer gate ──────────────────────
+
+    #[tokio::test]
+    async fn issue_read_denies_non_member_allows_viewer() {
+        let (db, _admin, lead, _maintainer, viewer, non_member, project_id) =
+            setup_membership_test();
+        let lead_app = app_as_user(db.clone(), &lead);
+        let issue = parse_json(
+            json_post(
+                &lead_app,
+                "/api/issues",
+                serde_json::json!({ "project_id": project_id, "title": "Secret work" }),
+            )
+            .await,
+        )
+        .await;
+        let issue_id = issue["id"].as_i64().unwrap();
+
+        let non_member_app = app_as_user(db.clone(), &non_member);
+        assert_eq!(
+            json_get(&non_member_app, &format!("/api/issues/{issue_id}")).await.status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let viewer_app = app_as_user(db, &viewer);
+        assert_eq!(
+            json_get(&viewer_app, &format!("/api/issues/{issue_id}")).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn page_and_plan_reads_follow_the_same_viewer_gate() {
+        let (db, _admin, lead, _maintainer, viewer, non_member, project_id) =
+            setup_membership_test();
+        let lead_app = app_as_user(db.clone(), &lead);
+        let page = parse_json(
+            json_post(
+                &lead_app,
+                "/api/pages",
+                serde_json::json!({ "project_id": project_id, "title": "Doc" }),
+            )
+            .await,
+        )
+        .await;
+        let page_id = page["id"].as_i64().unwrap();
+        let plan = parse_json(
+            json_post(
+                &lead_app,
+                "/api/plans",
+                serde_json::json!({ "project_id": project_id, "title": "Plan" }),
+            )
+            .await,
+        )
+        .await;
+        let plan_id = plan["id"].as_i64().unwrap();
+
+        let non_member_app = app_as_user(db.clone(), &non_member);
+        assert_eq!(
+            json_get(&non_member_app, &format!("/api/pages/{page_id}")).await.status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            json_get(&non_member_app, &format!("/api/plans/{plan_id}")).await.status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let viewer_app = app_as_user(db, &viewer);
+        assert_eq!(
+            json_get(&viewer_app, &format!("/api/pages/{page_id}")).await.status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            json_get(&viewer_app, &format!("/api/plans/{plan_id}")).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    // ── Reads: cross-project list/search filter instead of denying ──
+
+    #[tokio::test]
+    async fn issue_cross_project_list_filters_instead_of_denying() {
+        let (db, _admin, lead, _maintainer, viewer, non_member, project_id) =
+            setup_membership_test();
+        let lead_app = app_as_user(db.clone(), &lead);
+        json_post(
+            &lead_app,
+            "/api/issues",
+            serde_json::json!({ "project_id": project_id, "title": "Members only" }),
+        )
+        .await;
+
+        // No project_id filter → cross-project list. A non-member must get
+        // 200 with an empty (filtered) result, never a 403.
+        let non_member_app = app_as_user(db.clone(), &non_member);
+        let resp = json_get(&non_member_app, "/api/issues").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(parse_json(resp).await.as_array().unwrap().len(), 0);
+
+        let viewer_app = app_as_user(db, &viewer);
+        let resp = json_get(&viewer_app, "/api/issues").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(parse_json(resp).await.as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn search_filters_out_non_visible_projects() {
+        let (db, _admin, lead, _maintainer, _viewer, non_member, project_id) =
+            setup_membership_test();
+        let lead_app = app_as_user(db.clone(), &lead);
+        json_post(
+            &lead_app,
+            "/api/issues",
+            serde_json::json!({ "project_id": project_id, "title": "Unique searchable xyzzy" }),
+        )
+        .await;
+
+        let non_member_app = app_as_user(db, &non_member);
+        let resp = json_get(&non_member_app, "/api/search?query=xyzzy").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(
+            parse_json(resp).await.as_array().unwrap().is_empty(),
+            "non-member must not see search hits from a project they can't see"
+        );
+    }
+
+    #[tokio::test]
+    async fn project_list_filters_to_member_projects() {
+        let (db, _admin, lead, _maintainer, _viewer, non_member, _project_id) =
+            setup_membership_test();
+
+        let non_member_app = app_as_user(db.clone(), &non_member);
+        let list = parse_json(json_get(&non_member_app, "/api/projects").await).await;
+        assert_eq!(list.as_array().unwrap().len(), 0);
+
+        let lead_app = app_as_user(db, &lead);
+        let list = parse_json(json_get(&lead_app, "/api/projects").await).await;
+        assert_eq!(list.as_array().unwrap().len(), 1);
+    }
+
+    // ── Writes: content mutations gated at Maintainer ────────────
+
+    #[tokio::test]
+    async fn issue_create_gated_by_maintainer_role() {
+        let (db, admin, lead, maintainer, viewer, non_member, project_id) =
+            setup_membership_test();
+
+        for (user, expect_ok) in [
+            (&non_member, false),
+            (&viewer, false),
+            (&maintainer, true),
+            (&lead, true),
+            (&admin, true),
+        ] {
+            let app = app_as_user(db.clone(), user);
+            let resp = json_post(
+                &app,
+                "/api/issues",
+                serde_json::json!({ "project_id": project_id, "title": format!("by {}", user.username) }),
+            )
+            .await;
+            let expected = if expect_ok { StatusCode::OK } else { StatusCode::FORBIDDEN };
+            assert_eq!(resp.status(), expected, "{} create expected {expected}", user.username);
+        }
+    }
+
+    #[tokio::test]
+    async fn issue_update_and_delete_gated_by_maintainer_role() {
+        let (db, _admin, lead, maintainer, viewer, non_member, project_id) =
+            setup_membership_test();
+        let maintainer_app = app_as_user(db.clone(), &maintainer);
+        let issue = parse_json(
+            json_post(
+                &maintainer_app,
+                "/api/issues",
+                serde_json::json!({ "project_id": project_id, "title": "Target" }),
+            )
+            .await,
+        )
+        .await;
+        let issue_id = issue["id"].as_i64().unwrap();
+
+        let viewer_app = app_as_user(db.clone(), &viewer);
+        assert_eq!(
+            json_put(&viewer_app, &format!("/api/issues/{issue_id}"), serde_json::json!({"title": "hijack"}))
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        let non_member_app = app_as_user(db.clone(), &non_member);
+        assert_eq!(
+            json_put(&non_member_app, &format!("/api/issues/{issue_id}"), serde_json::json!({"title": "hijack"}))
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let lead_app = app_as_user(db.clone(), &lead);
+        assert_eq!(
+            json_put(&lead_app, &format!("/api/issues/{issue_id}"), serde_json::json!({"title": "renamed"}))
+                .await
+                .status(),
+            StatusCode::OK
+        );
+
+        assert_eq!(
+            json_delete(&viewer_app, &format!("/api/issues/{issue_id}")).await.status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            json_delete(&lead_app, &format!("/api/issues/{issue_id}")).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn page_and_plan_writes_gated_by_maintainer_role() {
+        let (db, _admin, lead, maintainer, viewer, non_member, project_id) =
+            setup_membership_test();
+
+        for (user, expect_ok) in [(&viewer, false), (&non_member, false), (&maintainer, true), (&lead, true)] {
+            let app = app_as_user(db.clone(), user);
+            let resp = json_post(
+                &app,
+                "/api/pages",
+                serde_json::json!({ "project_id": project_id, "title": format!("page by {}", user.username) }),
+            )
+            .await;
+            let expected = if expect_ok { StatusCode::OK } else { StatusCode::FORBIDDEN };
+            assert_eq!(resp.status(), expected, "page create by {}", user.username);
+
+            let resp = json_post(
+                &app,
+                "/api/plans",
+                serde_json::json!({ "project_id": project_id, "title": format!("plan by {}", user.username) }),
+            )
+            .await;
+            assert_eq!(resp.status(), expected, "plan create by {}", user.username);
+        }
+    }
+
+    // ── Comments: Viewer can read + create; non-member cannot ───
+
+    #[tokio::test]
+    async fn comment_create_allows_viewer_denies_non_member() {
+        let (db, _admin, lead, _maintainer, viewer, non_member, project_id) =
+            setup_membership_test();
+        let lead_app = app_as_user(db.clone(), &lead);
+        let issue = parse_json(
+            json_post(
+                &lead_app,
+                "/api/issues",
+                serde_json::json!({ "project_id": project_id, "title": "Commentable" }),
+            )
+            .await,
+        )
+        .await;
+        let issue_id = issue["id"].as_i64().unwrap();
+
+        let viewer_app = app_as_user(db.clone(), &viewer);
+        let resp = json_post(
+            &viewer_app,
+            &format!("/api/issues/{issue_id}/comments"),
+            serde_json::json!({ "content": "viewers can comment" }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK, "viewer must be allowed to comment");
+
+        let non_member_app = app_as_user(db, &non_member);
+        let resp = json_post(
+            &non_member_app,
+            &format!("/api/issues/{issue_id}/comments"),
+            serde_json::json!({ "content": "should not land" }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    // ── Structure endpoints: loosened to Maintainer once enforced ──
+
+    #[tokio::test]
+    async fn structure_endpoints_viewer_denied_maintainer_allowed() {
+        let (db, _admin, _lead, maintainer, viewer, non_member, project_id) =
+            setup_membership_test();
+
+        let viewer_app = app_as_user(db.clone(), &viewer);
+        assert_eq!(
+            json_post(&viewer_app, "/api/modules", serde_json::json!({"project_id": project_id, "name": "Nope"}))
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        let non_member_app = app_as_user(db.clone(), &non_member);
+        assert_eq!(
+            json_post(&non_member_app, "/api/labels", serde_json::json!({"project_id": project_id, "name": "nope"}))
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let maintainer_app = app_as_user(db.clone(), &maintainer);
+        assert_eq!(
+            json_post(&maintainer_app, "/api/modules", serde_json::json!({"project_id": project_id, "name": "Backend"}))
+                .await
+                .status(),
+            StatusCode::OK,
+            "maintainer should manage structure once enforcement loosens the gate"
+        );
+        assert_eq!(
+            json_post(&maintainer_app, "/api/folders", serde_json::json!({"project_id": project_id, "name": "Docs"}))
+                .await
+                .status(),
+            StatusCode::OK
+        );
+    }
+
+    // ── Project settings / delete: Lead ──────────────────────────
+
+    #[tokio::test]
+    async fn project_settings_update_maintainer_denied_lead_allowed() {
+        let (db, _admin, lead, maintainer, _viewer, _non_member, project_id) =
+            setup_membership_test();
+
+        let maintainer_app = app_as_user(db.clone(), &maintainer);
+        assert_eq!(
+            json_put(&maintainer_app, &format!("/api/projects/{project_id}"), serde_json::json!({"name": "Nope"}))
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let lead_app = app_as_user(db, &lead);
+        assert_eq!(
+            json_put(&lead_app, &format!("/api/projects/{project_id}"), serde_json::json!({"name": "Renamed"}))
+                .await
+                .status(),
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn project_delete_maintainer_denied_lead_allowed_when_enforced() {
+        // Design decision #6: deletion loosens Admin -> Lead once enforced.
+        let (db, _admin, lead, maintainer, _viewer, _non_member, project_id) =
+            setup_membership_test();
+
+        let maintainer_app = app_as_user(db.clone(), &maintainer);
+        assert_eq!(
+            json_delete(&maintainer_app, &format!("/api/projects/{project_id}")).await.status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let lead_app = app_as_user(db, &lead);
+        assert_eq!(
+            json_delete(&lead_app, &format!("/api/projects/{project_id}")).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    // ── Cross-project relations: role required on BOTH sides ─────
+
+    #[tokio::test]
+    async fn relation_link_requires_maintainer_on_both_projects() {
+        let (db, _admin, lead, maintainer, _viewer, _non_member, project_id) =
+            setup_membership_test();
+        let lead_app = app_as_user(db.clone(), &lead);
+        let issue_a = parse_json(
+            json_post(&lead_app, "/api/issues", serde_json::json!({"project_id": project_id, "title": "A"})).await,
+        )
+        .await;
+
+        let other_project_id = {
+            let conn = db.write().unwrap();
+            crate::db::queries::create_project(
+                &conn,
+                &CreateProject {
+                    name: "Other".into(),
+                    identifier: "OTH".into(),
+                    description: String::new(),
+                    emoji: None,
+                    lead_user_id: Some(lead.id),
+                },
+            )
+            .unwrap()
+            .id
+        };
+        let issue_b = parse_json(
+            json_post(
+                &lead_app,
+                "/api/issues",
+                serde_json::json!({"project_id": other_project_id, "title": "B"}),
+            )
+            .await,
+        )
+        .await;
+
+        let maintainer_app = app_as_user(db.clone(), &maintainer);
+        let link_body = serde_json::json!({
+            "source": issue_a["identifier"], "target": issue_b["identifier"], "relation_type": "relates_to"
+        });
+        assert_eq!(
+            json_post(&maintainer_app, "/api/issues/link", link_body.clone()).await.status(),
+            StatusCode::FORBIDDEN,
+            "maintainer has no role on the target's project"
+        );
+
+        {
+            let conn = db.write().unwrap();
+            crate::db::queries::members::upsert_member(&conn, other_project_id, maintainer.id, Role::Maintainer)
+                .unwrap();
+        }
+        assert_eq!(
+            json_post(&maintainer_app, "/api/issues/link", link_body).await.status(),
+            StatusCode::OK,
+            "maintainer now has Maintainer on both sides"
+        );
+    }
+
+    // ── Workspace-level (project-less) pages: admin-only ─────────
+
+    #[tokio::test]
+    async fn workspace_page_mutation_requires_admin() {
+        let (db, admin, _lead, maintainer, _viewer, _non_member, _project_id) =
+            setup_membership_test();
+
+        let maintainer_app = app_as_user(db.clone(), &maintainer);
+        assert_eq!(
+            json_post(&maintainer_app, "/api/pages", serde_json::json!({"title": "Workspace doc"}))
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let admin_app = app_as_user(db, &admin);
+        assert_eq!(
+            json_post(&admin_app, "/api/pages", serde_json::json!({"title": "Workspace doc"})).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    // ── Flag OFF: byte-for-byte regression proof ──────────────────
+
+    #[tokio::test]
+    async fn flag_off_preserves_legacy_behavior() {
+        // setup_lead_test seeds a DB with authz_enforced left at its default
+        // (off) — a random authenticated non-member.
+        let (db, admin, lead, regular, project_id) = setup_lead_test();
+        let random_app = app_as_user(db.clone(), &regular);
+
+        // Reads + content mutation stay open to any authenticated user.
+        assert_eq!(
+            json_get(&random_app, &format!("/api/projects/{project_id}")).await.status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            json_post(
+                &random_app,
+                "/api/issues",
+                serde_json::json!({ "project_id": project_id, "title": "Legacy open" })
+            )
+            .await
+            .status(),
+            StatusCode::OK,
+            "content mutation must stay open when the flag is off"
+        );
+
+        // Structure endpoints stay lead-gated (not loosened to Maintainer).
+        assert_eq!(
+            json_post(&random_app, "/api/modules", serde_json::json!({"project_id": project_id, "name": "Nope"}))
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        let lead_app = app_as_user(db.clone(), &lead);
+        assert_eq!(
+            json_post(&lead_app, "/api/modules", serde_json::json!({"project_id": project_id, "name": "Yes"}))
+                .await
+                .status(),
+            StatusCode::OK
+        );
+
+        // Project delete stays admin-only (lead denied, matching pre-LIF-194).
+        assert_eq!(
+            json_delete(&lead_app, &format!("/api/projects/{project_id}")).await.status(),
+            StatusCode::FORBIDDEN
+        );
+        let admin_app = app_as_user(db, &admin);
+        assert_eq!(
+            json_delete(&admin_app, &format!("/api/projects/{project_id}")).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    // ── Runtime toggle via PATCH /api/instance/settings ───────────
+
+    #[tokio::test]
+    async fn toggling_authz_enforced_via_patch_changes_behavior_on_next_request() {
+        let (db, admin, _lead, regular, project_id) = setup_lead_test();
+        let admin_app = app_as_user(db.clone(), &admin);
+        let regular_app = app_as_user(db.clone(), &regular);
+
+        // Flag off (default): a non-member can read the project freely.
+        assert_eq!(
+            json_get(&regular_app, &format!("/api/projects/{project_id}")).await.status(),
+            StatusCode::OK
+        );
+
+        let resp = json_patch(&admin_app, "/api/instance/settings", serde_json::json!({"authz_enforced": true}))
+            .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(parse_json(resp).await["authz_enforced"], true);
+
+        // Same connection, next request: the non-member is now denied — no
+        // restart required (authz::authz_enforced reads the row live).
+        assert_eq!(
+            json_get(&regular_app, &format!("/api/projects/{project_id}")).await.status(),
+            StatusCode::FORBIDDEN
+        );
     }
 }

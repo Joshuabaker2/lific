@@ -3,16 +3,36 @@ use axum::{
     extract::{Json, Path, State},
 };
 
+use crate::authz;
 use crate::db::queries::comments::CommentParent;
 use crate::db::{DbPool, models::*};
 use crate::error::LificError;
 
 use super::{with_read, with_write};
 
+/// LIF-197: comments are gated at `Viewer` — anyone who can see a project
+/// can read and post comments on its issues/pages (the actual auth-required
+/// check for *who* the comment is attributed to is separate, below).
+/// Workspace-level pages (`project_id = None`) fall back to admin-only.
+fn require_comment_viewer(
+    db: &DbPool,
+    auth_user: &Option<AuthUser>,
+    project_id: Option<i64>,
+) -> Result<(), LificError> {
+    match project_id {
+        Some(pid) => authz::require_role(db, auth_user, pid, Role::Viewer),
+        None => authz::require_workspace_admin(db, auth_user),
+    }
+}
+
 pub(super) async fn list_comments(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(issue_id): Path<i64>,
 ) -> Result<Json<Vec<Comment>>, LificError> {
+    let project_id = with_read(&db, |conn| crate::db::queries::get_issue(conn, issue_id))?
+        .project_id;
+    require_comment_viewer(&db, &auth_user, Some(project_id))?;
     with_read(&db, |conn| {
         crate::db::queries::comments::list_comments(conn, CommentParent::Issue(issue_id), None, None)
     })
@@ -25,6 +45,10 @@ pub(super) async fn create_comment(
     Extension(auth_user): Extension<Option<AuthUser>>,
     Json(input): Json<CreateComment>,
 ) -> Result<Json<Comment>, LificError> {
+    let project_id = with_read(&db, |conn| crate::db::queries::get_issue(conn, issue_id))?
+        .project_id;
+    require_comment_viewer(&db, &auth_user, Some(project_id))?;
+
     let user = auth_user
         .ok_or_else(|| LificError::BadRequest("authentication required to comment".into()))?;
 
@@ -41,8 +65,12 @@ pub(super) async fn create_comment(
 
 pub(super) async fn list_page_comments(
     State(db): State<DbPool>,
+    Extension(auth_user): Extension<Option<AuthUser>>,
     Path(page_id): Path<i64>,
 ) -> Result<Json<Vec<Comment>>, LificError> {
+    let project_id = with_read(&db, |conn| crate::db::queries::get_page(conn, page_id))?
+        .project_id;
+    require_comment_viewer(&db, &auth_user, project_id)?;
     with_read(&db, |conn| {
         crate::db::queries::comments::list_comments(conn, CommentParent::Page(page_id), None, None)
     })
@@ -55,6 +83,10 @@ pub(super) async fn create_page_comment(
     Extension(auth_user): Extension<Option<AuthUser>>,
     Json(input): Json<CreateComment>,
 ) -> Result<Json<Comment>, LificError> {
+    let project_id = with_read(&db, |conn| crate::db::queries::get_page(conn, page_id))?
+        .project_id;
+    require_comment_viewer(&db, &auth_user, project_id)?;
+
     let user = auth_user
         .ok_or_else(|| LificError::BadRequest("authentication required to comment".into()))?;
 
