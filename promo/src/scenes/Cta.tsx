@@ -18,13 +18,13 @@ export const Cta: React.FC = () => {
 
   const logoIn = spring({ frame, fps, config: { damping: 200, stiffness: 100 } });
   const urlIn = spring({
-    frame: frame - 14,
+    frame: frame - 10,
     fps,
     config: { damping: 16, stiffness: 110 },
   });
   // Lizzy peeks in from the bottom-right corner.
   const lizzy = spring({
-    frame: frame - 40,
+    frame: frame - 28,
     fps,
     config: { damping: 15, stiffness: 90 },
   });
@@ -79,7 +79,7 @@ export const Cta: React.FC = () => {
           {CTA_URL}
         </div>
 
-        <FadeUp delay={34}>
+        <FadeUp delay={24} duration={14}>
           <div style={{ fontFamily: BODY, fontSize: 30, color: C.textMuted }}>
             Free &amp; open source. Your issues, your machine.
           </div>

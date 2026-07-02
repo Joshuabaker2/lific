@@ -7,24 +7,24 @@ import { Terminal, TermLine } from "../components/Terminal";
 
 // Real CLI output: default port 8080, real tracing lines from src/main.rs.
 const LINES: TermLine[] = [
-  { at: 10, text: "cargo install lific", kind: "cmd", fpc: 1.6 },
-  { at: 52, text: "    Updating crates.io index", kind: "out" },
-  { at: 62, text: "   Compiling lific v2.0.0", kind: "out" },
-  { at: 84, text: "    Finished `release` profile [optimized]", kind: "out" },
-  { at: 92, text: "   Installed package `lific v2.0.0` (executable `lific`)", kind: "ok" },
-  { at: 116, text: "lific start", kind: "cmd", fpc: 1.8 },
-  { at: 148, text: "INFO database ready path=lific.db", kind: "out" },
-  { at: 158, text: "INFO API key auth enabled active_keys=1", kind: "out" },
+  { at: 6, text: "cargo install lific", kind: "cmd", fpc: 1.1 },
+  { at: 34, text: "    Updating crates.io index", kind: "out" },
+  { at: 42, text: "   Compiling lific v2.0.0", kind: "out" },
+  { at: 56, text: "    Finished `release` profile [optimized]", kind: "out" },
+  { at: 63, text: "   Installed package `lific v2.0.0` (executable `lific`)", kind: "ok" },
+  { at: 78, text: "lific start", kind: "cmd", fpc: 1.2 },
+  { at: 98, text: "INFO database ready path=lific.db", kind: "out" },
+  { at: 106, text: "INFO API key auth enabled active_keys=1", kind: "out" },
   {
-    at: 170,
+    at: 118,
     text: "INFO lific server started (REST + MCP + OAuth at /mcp) addr=0.0.0.0:8080",
     kind: "info",
   },
 ];
 
-/** `lific start` is submitted here; the server line lands at 170. */
-const START_AT = 116;
-const DEPLOYED_AT = 170;
+/** `lific start` is submitted here; the server line lands at 118. */
+const START_AT = 78;
+const DEPLOYED_AT = 118;
 
 export const TerminalScene: React.FC = () => {
   const frame = useCurrentFrame();
@@ -35,7 +35,7 @@ export const TerminalScene: React.FC = () => {
   const clock = `${elapsed.toFixed(1)}s`;
   const deployed = frame >= DEPLOYED_AT;
 
-  const captionIn = interpolate(frame, [195, 215], [0, 1], {
+  const captionIn = interpolate(frame, [138, 154], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });

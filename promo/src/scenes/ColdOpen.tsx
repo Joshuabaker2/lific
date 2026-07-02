@@ -10,12 +10,12 @@ import { BODY, DISPLAY } from "../fonts";
 export const ColdOpen: React.FC = () => {
   const frame = useCurrentFrame();
   const spin = (frame * 9) % 360;
-  const askOpacity = interpolate(frame, [45, 60], [0, 1], {
+  const askOpacity = interpolate(frame, [32, 44], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
   // Progress bar that creeps and stalls at 34%.
-  const progress = interpolate(frame, [0, 30, 100], [8, 31, 34], {
+  const progress = interpolate(frame, [0, 24, 75], [8, 31, 34], {
     extrapolateRight: "clamp",
   });
   const shimmer = (frame * 16) % 900;

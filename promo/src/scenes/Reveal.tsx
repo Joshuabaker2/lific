@@ -57,7 +57,7 @@ export const Reveal: React.FC = () => {
             Lific
           </div>
         </div>
-        <FadeUp delay={26}>
+        <FadeUp delay={17} duration={14}>
           <div
             style={{
               fontFamily: BODY,

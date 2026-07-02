@@ -9,16 +9,16 @@
 export const TRANSITION = 12;
 
 export const SCENES = {
-  coldOpen: 100,
-  jira: 105,
-  linear: 115,
-  foss: 150,
-  reveal: 160,
-  terminal: 360,
-  ui: 370,
-  agent: 250,
-  proof: 160,
-  cta: 130,
+  coldOpen: 75,
+  jira: 78,
+  linear: 85,
+  foss: 120,
+  reveal: 120,
+  terminal: 270,
+  ui: 240,
+  agent: 215,
+  proof: 115,
+  cta: 115,
 } as const;
 
 const durations = Object.values(SCENES);

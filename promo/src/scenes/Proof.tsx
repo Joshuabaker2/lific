@@ -28,7 +28,7 @@ export const Proof: React.FC = () => (
       style={{ justifyContent: "center", alignItems: "center", gap: 50 }}
     >
       <KineticLine text="Local-first. Yours." size={100} />
-      <FadeUp delay={20}>
+      <FadeUp delay={13} duration={14}>
         <div
           style={{
             fontFamily: BODY,
@@ -46,7 +46,7 @@ export const Proof: React.FC = () => (
           — back it up, grep it, take it anywhere.
         </div>
       </FadeUp>
-      <FadeUp delay={40}>
+      <FadeUp delay={26} duration={14}>
         <div style={{ display: "flex", gap: 20 }}>
           <Chip>CLI</Chip>
           <Chip>REST API</Chip>

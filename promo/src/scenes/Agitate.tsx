@@ -29,7 +29,7 @@ export const AgitateJira: React.FC = () => (
       style={{ justifyContent: "center", alignItems: "center", gap: 54 }}
     >
       <KineticLine text="Why pay for Jira?" size={104} />
-      <FadeUp delay={22}>
+      <FadeUp delay={15} duration={14}>
         <div style={{ display: "flex", gap: 20 }}>
           <FactChip>$7.91 per user / month</FactChip>
           <FactChip>famously slow</FactChip>
@@ -47,7 +47,7 @@ export const AgitateLinear: React.FC = () => (
       style={{ justifyContent: "center", alignItems: "center", gap: 54 }}
     >
       <KineticLine text="Why pay for Linear?" size={104} />
-      <FadeUp delay={22}>
+      <FadeUp delay={15} duration={14}>
         <div
           style={{
             display: "flex",
@@ -88,10 +88,10 @@ export const AgitateFoss: React.FC = () => (
       style={{ justifyContent: "center", alignItems: "center", gap: 56 }}
     >
       <KineticLine text="Free options get heavy." size={96} />
-      <FadeUp delay={20}>
+      <FadeUp delay={12} duration={14}>
         <div style={{ display: "flex", gap: 24 }}>
           {TOOLS.map((tool, i) => (
-            <FadeUp key={tool.name} delay={26 + i * 7}>
+            <FadeUp key={tool.name} delay={17 + i * 5} duration={14}>
               <div
                 style={{
                   width: 330,
@@ -131,7 +131,7 @@ export const AgitateFoss: React.FC = () => (
           ))}
         </div>
       </FadeUp>
-      <FadeUp delay={55}>
+      <FadeUp delay={40} duration={14}>
         <div style={{ fontFamily: BODY, fontSize: 19, color: C.textFaint }}>
           figures from each project&apos;s own documentation
         </div>
