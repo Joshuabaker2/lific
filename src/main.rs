@@ -27,7 +27,7 @@ use axum::{
 };
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use cli::{Cli, Command, InstanceAction, KeyAction, UserAction};
 use config::Config;
 
@@ -107,6 +107,13 @@ async fn serve_frontend(uri: axum::http::Uri) -> impl IntoResponse {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
+    // Shell completions must work with no lific.toml present and touch no DB,
+    // so handle them before loading config or opening the database.
+    if let Command::Completion { shell } = cli.command {
+        clap_complete::generate(shell, &mut Cli::command(), "lific", &mut std::io::stdout());
+        return Ok(());
+    }
+
     // Load config (CLI flags override config values)
     let mut cfg = Config::load(cli.config.as_deref());
 
@@ -121,7 +128,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // them via the process-default transport.
         actor::set_default_transport(actor::Transport::Cli);
         let pool = db::open(&cfg.database.path)?;
-        return cli::exec::run(&pool, &cli.command, cli.json);
+        // clispec.dev: honor explicit --json, and auto-upgrade to JSON when
+        // stdout is piped/redirected so scripts and agents get machine output.
+        let json = cli::term::wants_json(cli.json);
+        return cli::exec::run(&pool, &cli.command, json);
     }
 
     match cli.command {
@@ -137,6 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         Command::Instance { action } => {
+            let json = cli::term::wants_json(cli.json);
             let pool = db::open(&cfg.database.path)?;
             // Seed the settings row from TOML on first touch, then operate on
             // the DB store (authoritative).
@@ -172,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let conn = pool.write()?;
                     db::queries::settings::update(&conn, patch)?;
                     drop(conn);
-                    if !cli.json {
+                    if !json {
                         println!("Updated instance settings.");
                     }
                     // Fall through to print current state below.
@@ -198,7 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 settings.signup_email_domains.join(", ")
             };
 
-            if cli.json {
+            if json {
                 let out = serde_json::json!({
                     "version": version,
                     "database": cfg.database.path.display().to_string(),
@@ -230,6 +241,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         Command::Key { action } => {
+            let json = cli::term::wants_json(cli.json);
             let pool = db::open(&cfg.database.path)?;
             let manager =
                 auth::create_key_manager().map_err(|e| format!("key manager init failed: {e}"))?;
@@ -239,28 +251,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let key = auth::create_api_key(&pool, &manager, &name)?;
 
                     // If --user was provided, assign the key to that user
-                    if let Some(ref username) = user {
+                    let assigned = if let Some(ref username) = user {
                         let conn = pool.read()?;
                         let u = db::queries::users::get_user_by_username(&conn, username)?;
                         drop(conn);
                         let conn = pool.write()?;
                         db::queries::users::assign_key_to_user(&conn, &name, u.id)?;
-                        println!();
-                        println!("  API Key created: {name} (assigned to {username})");
+                        Some(username.clone())
                     } else {
+                        None
+                    };
+
+                    if json {
+                        let out = serde_json::json!({
+                            "name": name,
+                            "key": key,
+                            "user": assigned,
+                        });
+                        println!("{}", serde_json::to_string_pretty(&out)?);
+                    } else {
+                        if let Some(ref username) = assigned {
+                            println!();
+                            println!("  API Key created: {name} (assigned to {username})");
+                        } else {
+                            println!();
+                            println!("  API Key created: {name}");
+                        }
                         println!();
-                        println!("  API Key created: {name}");
+                        println!("  {key}");
+                        println!();
+                        println!("  Save this key now. It will never be shown again.");
+                        println!("  Use as: Authorization: Bearer {key}");
+                        println!();
                     }
-                    println!();
-                    println!("  {key}");
-                    println!();
-                    println!("  Save this key now. It will never be shown again.");
-                    println!("  Use as: Authorization: Bearer {key}");
-                    println!();
                 }
                 KeyAction::List => {
                     let keys = auth::list_api_keys(&pool)?;
-                    if keys.is_empty() {
+                    if json {
+                        let out: Vec<_> = keys
+                            .iter()
+                            .map(|k| {
+                                serde_json::json!({
+                                    "name": k.name,
+                                    "revoked": k.revoked,
+                                    "created_at": k.created_at,
+                                    "expires_at": k.expires_at,
+                                })
+                            })
+                            .collect();
+                        println!("{}", serde_json::to_string_pretty(&out)?);
+                    } else if keys.is_empty() {
                         println!("No API keys configured.");
                     } else {
                         println!("{} API key(s):", keys.len());
@@ -276,17 +316,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 KeyAction::Revoke { name } => {
                     auth::revoke_api_key(&pool, &name)?;
-                    println!("Revoked key: {name}");
+                    if json {
+                        let out = serde_json::json!({ "revoked": name });
+                        println!("{}", serde_json::to_string_pretty(&out)?);
+                    } else {
+                        println!("Revoked key: {name}");
+                    }
                 }
                 KeyAction::Rotate { name } => {
                     let key = auth::rotate_api_key(&pool, &manager, &name)?;
-                    println!();
-                    println!("  Key rotated: {name}");
-                    println!();
-                    println!("  {key}");
-                    println!();
-                    println!("  Save this key now. It will never be shown again.");
-                    println!();
+                    if json {
+                        let out = serde_json::json!({ "name": name, "key": key });
+                        println!("{}", serde_json::to_string_pretty(&out)?);
+                    } else {
+                        println!();
+                        println!("  Key rotated: {name}");
+                        println!();
+                        println!("  {key}");
+                        println!();
+                        println!("  Save this key now. It will never be shown again.");
+                        println!();
+                    }
                 }
                 KeyAction::Assign { name, user } => {
                     let conn = pool.read()?;
@@ -294,13 +344,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     drop(conn);
                     let conn = pool.write()?;
                     db::queries::users::assign_key_to_user(&conn, &name, u.id)?;
-                    println!("Assigned key '{name}' to user '{user}'");
+                    if json {
+                        let out = serde_json::json!({ "name": name, "user": user });
+                        println!("{}", serde_json::to_string_pretty(&out)?);
+                    } else {
+                        println!("Assigned key '{name}' to user '{user}'");
+                    }
                 }
             }
             return Ok(());
         }
 
         Command::User { action } => {
+            let json = cli::term::wants_json(cli.json);
             let pool = db::open(&cfg.database.path)?;
 
             match action {
@@ -335,16 +391,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         },
                     )?;
 
-                    let role = if user.is_admin { " (admin)" } else { "" };
-                    println!("User created: {}{role}", user.username);
-                    println!("  email: {}", user.email);
-                    println!("  display_name: {}", user.display_name);
+                    if json {
+                        let out = serde_json::json!({
+                            "username": user.username,
+                            "email": user.email,
+                            "display_name": user.display_name,
+                            "is_admin": user.is_admin,
+                            "is_bot": user.is_bot,
+                        });
+                        println!("{}", serde_json::to_string_pretty(&out)?);
+                    } else {
+                        let role = if user.is_admin { " (admin)" } else { "" };
+                        println!("User created: {}{role}", user.username);
+                        println!("  email: {}", user.email);
+                        println!("  display_name: {}", user.display_name);
+                    }
                 }
                 UserAction::List => {
                     let conn = pool.read()?;
                     let users = db::queries::users::list_users(&conn)?;
 
-                    if users.is_empty() {
+                    if json {
+                        let out: Vec<_> = users
+                            .iter()
+                            .map(|u| {
+                                serde_json::json!({
+                                    "id": u.id,
+                                    "username": u.username,
+                                    "email": u.email,
+                                    "is_admin": u.is_admin,
+                                    "is_bot": u.is_bot,
+                                    "created_at": u.created_at,
+                                })
+                            })
+                            .collect();
+                        println!("{}", serde_json::to_string_pretty(&out)?);
+                    } else if users.is_empty() {
                         println!("No users.");
                     } else {
                         println!("{} user(s):", users.len());
@@ -365,12 +447,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 UserAction::Promote { username } => {
                     let conn = pool.write()?;
                     db::queries::users::set_admin(&conn, &username, true)?;
-                    println!("Promoted '{username}' to admin.");
+                    if json {
+                        let out = serde_json::json!({ "promoted": username });
+                        println!("{}", serde_json::to_string_pretty(&out)?);
+                    } else {
+                        println!("Promoted '{username}' to admin.");
+                    }
                 }
                 UserAction::Demote { username } => {
                     let conn = pool.write()?;
                     db::queries::users::set_admin(&conn, &username, false)?;
-                    println!("Demoted '{username}' from admin.");
+                    if json {
+                        let out = serde_json::json!({ "demoted": username });
+                        println!("{}", serde_json::to_string_pretty(&out)?);
+                    } else {
+                        println!("Demoted '{username}' from admin.");
+                    }
                 }
             }
             return Ok(());
@@ -660,7 +752,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             handle.waiting().await?;
         }
 
-        // CRUD commands are handled before this match
+        // CRUD commands and Completion are handled before this match
+        Command::Completion { .. } |
         Command::Issue { .. } | Command::Project { .. } | Command::Page { .. } |
         Command::Export { .. } |
         Command::Search { .. } | Command::Comment { .. } | Command::Module { .. } |

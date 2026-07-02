@@ -39,6 +39,7 @@ anyhow = "1"
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
 
 # Auth
 api-keys-simplified = "0.5"

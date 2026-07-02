@@ -1,4 +1,5 @@
 pub mod exec;
+pub mod term;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -44,6 +45,12 @@ pub enum Command {
 
     /// Generate a default lific.toml config file
     Init,
+
+    /// Generate shell completions (e.g. `lific completion fish | source`)
+    Completion {
+        /// Shell to generate completions for (bash, zsh, fish, powershell, elvish)
+        shell: clap_complete::Shell,
+    },
 
     /// Inspect instance-wide settings and state (admin/operator scope)
     Instance {
@@ -762,6 +769,33 @@ mod tests {
     fn parse_init() {
         let cli = Cli::try_parse_from(["lific", "init"]).unwrap();
         assert!(matches!(cli.command, Command::Init));
+    }
+
+    #[test]
+    fn parse_completion_fish() {
+        let cli = Cli::try_parse_from(["lific", "completion", "fish"]).unwrap();
+        match cli.command {
+            Command::Completion { shell } => {
+                assert_eq!(shell, clap_complete::Shell::Fish);
+            }
+            _ => panic!("expected Completion"),
+        }
+    }
+
+    #[test]
+    fn parse_completion_bash() {
+        let cli = Cli::try_parse_from(["lific", "completion", "bash"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Completion {
+                shell: clap_complete::Shell::Bash,
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_completion_rejects_garbage() {
+        assert!(Cli::try_parse_from(["lific", "completion", "notashell"]).is_err());
     }
 
     #[test]
