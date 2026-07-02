@@ -20,7 +20,6 @@ import {
   cardsTop,
   CARD_W,
   CARD_PAD,
-  CARD_GAP,
   COL_W,
   PILLS_H,
   COL_HEADER_H,
@@ -28,12 +27,12 @@ import {
 import { Cursor, Waypoint } from "../components/Cursor";
 
 /*
- * Pixel-faithful board demo: the real app shell, one drag-and-drop
- * (LIF-214: Todo -> Active) with svelte-dnd-action's dashed accent
- * drop-target outline, live count updates, and column reflow.
+ * Pixel-faithful board demo, zoomed for phone legibility: 3 visible
+ * columns (Backlog/Cancelled shown as hidden pills, like the real
+ * Columns control), one drag with svelte-dnd-action's dashed accent
+ * drop outline, live count updates, column reflow.
  */
 
-// Project labels (label chips resolve color from these, like the app).
 const L: Record<string, Label> = {
   webui: { name: "web-ui", color: "#4dd9c7" },
   core: { name: "core", color: "#9287d7" },
@@ -44,25 +43,24 @@ const L: Record<string, Label> = {
 
 type BoardCard = {
   issue: IssueData;
-  col: number; // 0 backlog, 1 todo, 2 active, 3 done
+  col: number; // 0 todo, 1 active, 2 done
   slot: number;
-  lines: 1 | 2; // title line count (drives real card height)
 };
 
 const CARDS: BoardCard[] = [
-  { col: 0, slot: 0, lines: 1, issue: { identifier: "LIF-241", title: "Swimlane picker for the board", updated: "6d ago" } },
-  { col: 0, slot: 1, lines: 1, issue: { identifier: "LIF-249", title: "Import issues from CSV", priority: "low", updated: "3d ago" } },
-  { col: 1, slot: 0, lines: 1, issue: { identifier: "LIF-231", title: "Board column virtualization", priority: "medium", labels: [L.webui], updated: "2d ago" } },
-  { col: 1, slot: 1, lines: 2, issue: { identifier: "LIF-214", title: "Bulk-edit issues from the list view", priority: "high", labels: [L.webui], updated: "4h ago" } },
-  { col: 1, slot: 2, lines: 1, issue: { identifier: "LIF-207", title: "Saved filters per project", priority: "low", updated: "1d ago" } },
-  { col: 2, slot: 0, lines: 2, issue: { identifier: "LIF-198", title: "Fix WAL checkpoint race on shutdown", priority: "high", labels: [L.core, L.bug], updated: "26m ago" } },
-  { col: 2, slot: 1, lines: 1, issue: { identifier: "LIF-226", title: "MCP: recurring plan templates", priority: "medium", labels: [L.mcp], updated: "2h ago" } },
-  { col: 3, slot: 0, lines: 1, issue: { identifier: "LIF-183", title: "OAuth device flow for CLI login", labels: [L.auth], updated: "5h ago", status: "done" } },
-  { col: 3, slot: 1, lines: 1, issue: { identifier: "LIF-171", title: "Backup retention config", labels: [L.core], updated: "1d ago", status: "done" } },
+  { col: 0, slot: 0, issue: { identifier: "LIF-231", title: "Board column virtualization", priority: "medium", labels: [L.webui], updated: "2d ago" } },
+  { col: 0, slot: 1, issue: { identifier: "LIF-214", title: "Bulk-edit issues from the list", priority: "high", labels: [L.webui], updated: "4h ago" } },
+  { col: 0, slot: 2, issue: { identifier: "LIF-207", title: "Saved filters per project", priority: "low", updated: "1d ago" } },
+  { col: 1, slot: 0, issue: { identifier: "LIF-198", title: "Fix WAL checkpoint race", priority: "high", labels: [L.core, L.bug], updated: "26m ago" } },
+  { col: 1, slot: 1, issue: { identifier: "LIF-226", title: "MCP: recurring plan templates", priority: "medium", labels: [L.mcp], updated: "2h ago" } },
+  { col: 2, slot: 0, issue: { identifier: "LIF-183", title: "OAuth device flow for CLI", labels: [L.auth], updated: "5h ago", status: "done" } },
+  { col: 2, slot: 1, issue: { identifier: "LIF-171", title: "Backup retention config", labels: [L.core], updated: "1d ago", status: "done" } },
 ];
 
-// Real card heights: 87px for 1-line titles, 105px for 2-line titles
-// (p-2.5 + top row + title lines + mt-2 + chip row + borders).
+// Deterministic card metrics (single-line titles): 87px card, 8px gap.
+const CARD_H = 87;
+const PITCH = CARD_H + 8;
+const slotYAt = (slot: number) => cardsTop() + slot * PITCH;
 
 // Drag: LIF-214 (todo slot 1) -> active slot 2, frames 55..105.
 const DRAG_START = 55;
@@ -70,13 +68,6 @@ const DRAG_END = 105;
 const MOVED = "LIF-214";
 
 const ease = Easing.bezier(0.4, 0, 0.2, 1);
-
-/** y of a slot in a column given the (post-move aware) stack. */
-const slotY = (heights: number[], slot: number) => {
-  let y = cardsTop();
-  for (let i = 0; i < slot; i++) y += heights[i] + CARD_GAP;
-  return y;
-};
 
 export const UIScene: React.FC = () => {
   const frame = useCurrentFrame();
@@ -90,16 +81,16 @@ export const UIScene: React.FC = () => {
   const dragging = frame >= DRAG_START && frame < DRAG_END;
   const landed = frame >= DRAG_END;
 
-  // Counts update at drop, exactly like the live app.
+  // Counts update at drop, exactly like the live app. Backlog stays a
+  // hidden pill with 2 items; total label counts visible board issues.
   const counts = landed
     ? { backlog: 2, todo: 2, active: 3, done: 2 }
     : { backlog: 2, todo: 3, active: 2, done: 2 };
 
-  // Source + destination geometry for the moved card.
-  const srcX = colX(1) + CARD_PAD;
-  const srcY = slotY([87, 105, 87], 1);
-  const dstX = colX(2) + CARD_PAD;
-  const dstY = slotY([105, 87, 105], 2);
+  const srcX = colX(0) + CARD_PAD;
+  const srcY = slotYAt(1);
+  const dstX = colX(1) + CARD_PAD;
+  const dstY = slotYAt(2);
 
   const settle = spring({
     frame: frame - DRAG_END,
@@ -112,14 +103,13 @@ export const UIScene: React.FC = () => {
     y: srcY + (dstY - srcY) * dragT + Math.sin(dragT * Math.PI) * -18,
   };
 
-  // Cursor tracks the card's grab point; leaves after the drop.
   const CURSOR: Waypoint[] = [
-    { at: 14, x: colX(3) + 220, y: 560 },
+    { at: 14, x: colX(2) + 220, y: 500 },
     { at: 48, x: srcX + 150, y: srcY + 40 },
     { at: DRAG_START, x: srcX + 150, y: srcY + 40, click: true },
     { at: DRAG_END, x: dstX + 150, y: dstY + 40 },
     { at: DRAG_END + 8, x: dstX + 150, y: dstY + 40, click: true },
-    { at: DRAG_END + 45, x: dstX + 260, y: dstY + 260 },
+    { at: DRAG_END + 45, x: dstX + 260, y: dstY + 220 },
   ];
 
   const frameIn = spring({ frame, fps, config: { damping: 200, stiffness: 90 } });
@@ -128,10 +118,10 @@ export const UIScene: React.FC = () => {
     extrapolateRight: "clamp",
   });
 
-  // Native app size; scaled up for legibility, proportions untouched.
-  const APP_W = 1500;
-  const APP_H = 764;
-  const SCALE = 1.14;
+  // Native app size (3 columns), zoomed hard for phone-in-feed legibility.
+  const APP_W = 1146;
+  const APP_H = 620;
+  const SCALE = 1.42;
 
   return (
     <Background>
@@ -140,7 +130,7 @@ export const UIScene: React.FC = () => {
           style={{
             transform: `scale(${SCALE * (0.985 + frameIn * 0.015)})`,
             opacity: frameIn,
-            marginTop: -26,
+            marginTop: -40,
           }}
         >
           <BrowserFrame url="localhost:8080/#/LIF/board" width={APP_W} height={APP_H + 52}>
@@ -148,14 +138,14 @@ export const UIScene: React.FC = () => {
               width={APP_W}
               height={APP_H}
               counts={counts}
-              totalLabel={"9"}
+              totalLabel={"7"}
             >
               {/* svelte-dnd-action drop-target outline on the hovered zone */}
               {dragging && dragT > 0.45 ? (
                 <div
                   style={{
                     position: "absolute",
-                    left: colX(2) + 4,
+                    left: colX(1) + 4,
                     top: PILLS_H + COL_HEADER_H + 4,
                     width: COL_W - 9,
                     bottom: 8,
@@ -168,22 +158,15 @@ export const UIScene: React.FC = () => {
 
               {/* Static cards */}
               {CARDS.filter((c) => c.issue.identifier !== MOVED).map((card) => {
-                // Only LIF-207 reflows: slot 2 of [87,105,87] -> slot 1 of
-                // [87,87] once the dragged card lifts out of Todo.
-                let y: number;
+                // Only LIF-207 reflows (todo slot 2 -> 1) when the drag lifts.
+                let y = slotYAt(card.slot);
                 if (card.issue.identifier === "LIF-207") {
                   const s = spring({
                     frame: frame - (DRAG_START + 6),
                     fps,
                     config: { damping: 200, stiffness: 140 },
                   });
-                  const from = slotY([87, 105, 87], 2);
-                  const to = slotY([87, 87], 1);
-                  y = frame < DRAG_START + 6 ? from : from + (to - from) * s;
-                } else if (card.col === 2) {
-                  y = slotY([105, 87], card.slot);
-                } else {
-                  y = slotY([87, 87], card.slot);
+                  y = frame < DRAG_START + 6 ? slotYAt(2) : slotYAt(2) + (slotYAt(1) - slotYAt(2)) * s;
                 }
                 const enter = spring({
                   frame: frame - 4 - (card.col * 2 + card.slot) * 2,
@@ -242,12 +225,13 @@ export const UIScene: React.FC = () => {
         <div
           style={{
             position: "absolute",
-            bottom: 36,
+            bottom: 26,
             fontFamily: BODY,
-            fontSize: 36,
+            fontSize: 42,
             fontWeight: 500,
             color: C.text,
             opacity: captionIn,
+            textShadow: "0 4px 30px rgba(0,0,0,0.9)",
           }}
         >
           Issues, kanban, pages, modules —{" "}

@@ -144,16 +144,25 @@ export const IssueCard: React.FC<{
         ...style,
       }}
     >
-      {/* Top row: identifier + priority */}
+      {/* Top row: identifier + priority. Fixed 14px row height so cards
+          with and without a priority icon keep identical rhythm. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
+          height: 14,
           gap: 8, // gap-2
           marginBottom: 6, // mb-1.5
         }}
       >
-        <span style={{ fontSize: MICRO, fontFamily: MONO, color: C.textFaint }}>
+        <span
+          style={{
+            fontSize: MICRO,
+            lineHeight: "14px",
+            fontFamily: MONO,
+            color: C.textFaint,
+          }}
+        >
           {issue.identifier}
         </span>
         <div style={{ flex: 1 }} />
@@ -162,28 +171,31 @@ export const IssueCard: React.FC<{
         ) : null}
       </div>
 
-      {/* Title */}
+      {/* Title. Explicit 18px line box: deterministic card heights. */}
       <h3
         style={{
           margin: 0,
           fontSize: BODY_SM,
           fontWeight: 400,
-          lineHeight: 1.375, // leading-snug
+          lineHeight: "18px", // leading-snug at 13px
           color: struck ? C.textMuted : C.text,
           textDecoration: struck ? "line-through" : "none",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
         }}
       >
         {issue.title}
       </h3>
 
-      {/* Bottom: labels + updated time */}
+      {/* Bottom: labels + updated time. Fixed 19px row height (chip box)
+          so label-less cards match labeled ones. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
+          height: 19,
           gap: 6, // gap-1.5
           marginTop: 8, // mt-2
-          flexWrap: "wrap",
         }}
       >
         {(issue.labels ?? []).map((lbl) => (
@@ -876,22 +888,26 @@ const Sidebar: React.FC = () => {
 
 // ── Whole-app shell: L-chrome + recessed content panel ───────
 
-export const BOARD_STATUSES = ["backlog", "todo", "active", "done"] as const;
+export const BOARD_STATUSES = ["todo", "active", "done"];
+const ALL_STATUSES = ["backlog", "todo", "active", "done", "cancelled"];
 
 /**
  * The full app frame at native CSS px. Children render into the board
  * area (absolutely positioned over the column tracks).
  *
- * `counts` drives the topbar tallies + pill bar + column headers so a
- * drag can update every count the way the live app would.
+ * `columns` picks which statuses render as tracks (the rest appear as
+ * hidden pills, like the real Columns visibility control). `counts`
+ * drives the topbar tallies + pill bar + column headers so a drag can
+ * update every count the way the live app would.
  */
 export const LificApp: React.FC<{
   width: number;
   height: number;
   counts: Record<string, number>;
   totalLabel: string;
+  columns?: string[];
   children?: React.ReactNode;
-}> = ({ width, height, counts, totalLabel, children }) => {
+}> = ({ width, height, counts, totalLabel, columns = BOARD_STATUSES, children }) => {
   return (
     <div
       style={{
@@ -914,7 +930,10 @@ export const LificApp: React.FC<{
         }}
       >
         <Topbar
-          tallies={BOARD_STATUSES.map((s) => ({ status: s, count: counts[s] ?? 0 }))}
+          tallies={ALL_STATUSES.filter((s) => (counts[s] ?? 0) > 0).map((s) => ({
+            status: s,
+            count: counts[s] ?? 0,
+          }))}
           countLabel={totalLabel}
         />
         {/* Recessed content panel: rounded-tl-xl + cast shadows */}
@@ -929,14 +948,11 @@ export const LificApp: React.FC<{
           }}
         >
           <ColumnsPillBar
-            statuses={[
-              ...BOARD_STATUSES.map((s) => ({
-                status: s,
-                count: counts[s] ?? 0,
-                visible: true,
-              })),
-              { status: "cancelled", count: 0, visible: false },
-            ]}
+            statuses={ALL_STATUSES.map((s) => ({
+              status: s,
+              count: counts[s] ?? 0,
+              visible: columns.includes(s),
+            }))}
           />
           {/* Column tracks */}
           <div
@@ -949,7 +965,7 @@ export const LificApp: React.FC<{
               display: "flex",
             }}
           >
-            {BOARD_STATUSES.map((s) => (
+            {columns.map((s) => (
               <div
                 key={s}
                 style={{

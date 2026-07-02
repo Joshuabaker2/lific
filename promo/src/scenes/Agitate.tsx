@@ -9,7 +9,7 @@ const FactChip: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <span
     style={{
       fontFamily: BODY,
-      fontSize: 27,
+      fontSize: 31,
       fontWeight: 500,
       color: C.textMuted,
       border: `1px solid ${C.border}`,
@@ -119,7 +119,7 @@ export const AgitateFoss: React.FC = () => (
                     key={fact}
                     style={{
                       fontFamily: BODY,
-                      fontSize: 21,
+                      fontSize: 24,
                       color: C.textMuted,
                     }}
                   >
@@ -132,7 +132,7 @@ export const AgitateFoss: React.FC = () => (
         </div>
       </FadeUp>
       <FadeUp delay={40} duration={14}>
-        <div style={{ fontFamily: BODY, fontSize: 19, color: C.textFaint }}>
+        <div style={{ fontFamily: BODY, fontSize: 22, color: C.textFaint }}>
           figures from each project&apos;s own documentation
         </div>
       </FadeUp>

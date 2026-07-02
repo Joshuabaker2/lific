@@ -43,7 +43,7 @@ export const TerminalScene: React.FC = () => {
   return (
     <Background>
       <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
-        <Terminal lines={LINES} />
+        <Terminal lines={LINES} width={1460} height={620} fontSize={30} />
 
         {/* Deploy stopwatch — appears when `lific start` is typed */}
         <div
@@ -56,7 +56,7 @@ export const TerminalScene: React.FC = () => {
               extrapolateRight: "clamp",
             }),
             fontFamily: MONO,
-            fontSize: 44,
+            fontSize: 50,
             fontWeight: 600,
             color: deployed ? C.success : C.textMuted,
             border: `1px solid ${deployed ? C.success : C.border}`,
@@ -75,9 +75,9 @@ export const TerminalScene: React.FC = () => {
         <div
           style={{
             position: "absolute",
-            bottom: 90,
+            bottom: 70,
             fontFamily: BODY,
-            fontSize: 40,
+            fontSize: 44,
             fontWeight: 500,
             color: C.text,
             opacity: captionIn,
