@@ -44,6 +44,21 @@ jobs:
             exit 1
           fi
           echo "version=${CARGO_VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Verify CHANGELOG.md has a section for this version
+        # The publish job extracts the TOP `## ` section of CHANGELOG.md as the
+        # GitHub release body. If the changelog wasn't updated before tagging,
+        # that top section is the PREVIOUS release's notes and they get shipped
+        # silently (this is how v1.4.1 went out under v1.4.0's notes — LIF-148).
+        # Assert the newest heading actually names this version, before any
+        # builds run.
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TOP_HEADING="$(grep -m1 '^## ' CHANGELOG.md || true)"
+          echo "top changelog heading: ${TOP_HEADING}"
+          if ! printf '%s' "$TOP_HEADING" | grep -q "v${VERSION}\b"; then
+            echo "::error::CHANGELOG.md's top section is '${TOP_HEADING}', which does not name v${VERSION}. Add the v${VERSION} section at the top of CHANGELOG.md before tagging."
+            exit 1
+          fi
 
   test:
     needs: verify
