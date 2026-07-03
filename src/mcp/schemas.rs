@@ -98,6 +98,10 @@ pub struct CreateIssueInput {
     pub module: Option<String>,
     #[schemars(description = "Label names to attach")]
     pub labels: Option<Vec<String>>,
+    #[schemars(description = "Start date (ISO 8601 date, e.g. 2026-06-01)")]
+    pub start_date: Option<String>,
+    #[schemars(description = "Target/due date (ISO 8601 date, e.g. 2026-06-15)")]
+    pub target_date: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -118,6 +122,10 @@ pub struct UpdateIssueInput {
     pub module: Option<String>,
     #[schemars(description = "Replace labels")]
     pub labels: Option<Vec<String>>,
+    #[schemars(description = "New start date (ISO 8601 date, e.g. 2026-06-01)")]
+    pub start_date: Option<String>,
+    #[schemars(description = "New target/due date (ISO 8601 date, e.g. 2026-06-15)")]
+    pub target_date: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
