@@ -8,14 +8,16 @@
 // menu's position/items in place — see ContextMenu.svelte's window
 // `contextmenu` listener), so this is a single slot, not a stack.
 
-import type { Component } from "svelte";
+import type { Icon } from "lucide-svelte";
 
 export interface ContextMenuItem {
   label: string;
   /** Lucide icon component, rendered at 14px — same vocabulary as every
    *  other menu/row icon in the app. Optional so a future text-only item
-   *  isn't forced to pick one. */
-  icon?: Component<{ size?: number; class?: string }>;
+   *  isn't forced to pick one. Typed as the lucide `Icon` base class so any
+   *  named icon (PanelRight, ExternalLink, ...) assigns cleanly; lucide-svelte
+   *  v1 icons are legacy class components, not Svelte 5 `Component` functions. */
+  icon?: typeof Icon;
   action: () => void;
   disabled?: boolean;
 }
