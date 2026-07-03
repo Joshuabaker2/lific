@@ -134,7 +134,7 @@ export const UIScene: React.FC = () => {
             marginTop: -40,
           }}
         >
-          <BrowserFrame url="localhost:8080/#/LIF/board" width={APP_W} height={APP_H + 52}>
+          <BrowserFrame url="localhost:3456/#/LIF/board" width={APP_W} height={APP_H + 52}>
             <LificApp
               width={APP_W}
               height={APP_H}

@@ -233,12 +233,12 @@ export const TeamsScene: React.FC = () => {
             marginTop: -46,
           }}
         >
-          <BrowserFrame url="localhost:8080/#/settings/instance" width={APP_W} height={APP_H + 52}>
+          <BrowserFrame url="localhost:3456/#/settings/instance" width={APP_W} height={APP_H + 52}>
             <div style={{ position: "relative" }}>
               <InstanceSettingsPage
                 width={APP_W}
                 height={APP_H}
-                host="localhost:8080"
+                host="localhost:3456"
                 signupsProgress={signupsProgress}
                 authzProgress={authzProgress}
                 scrollY={scrollY}
