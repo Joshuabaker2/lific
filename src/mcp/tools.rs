@@ -157,6 +157,23 @@ fn resolve_comment_parent(
     }
 }
 
+/// LIF-143: resolve the project a comment belongs to, via its issue or page
+/// parent. Mirrors `api::comments::resolve_comment_project` — a page comment
+/// may have a NULL project (workspace page), which `mention_candidates`
+/// handles.
+fn resolve_comment_project(
+    conn: &rusqlite::Connection,
+    comment: &models::Comment,
+) -> Result<Option<i64>, crate::error::LificError> {
+    if let Some(issue_id) = comment.issue_id {
+        Ok(Some(queries::get_issue(conn, issue_id)?.project_id))
+    } else if let Some(page_id) = comment.page_id {
+        Ok(queries::get_page(conn, page_id)?.project_id)
+    } else {
+        Ok(None)
+    }
+}
+
 /// Append a paging hint to `out` if `has_more` is true.
 /// `next_offset` is the offset the agent should use to fetch the next page.
 fn append_pagination_hint(out: &mut String, has_more: bool, next_offset: i64) {
@@ -366,6 +383,21 @@ impl LificMcp {
             }
         };
         require_page_role_mcp(&self.db, project_id, min)
+    }
+
+    /// LIF-143: resolve the acting MCP user for a comment edit/delete the
+    /// same way `add_comment` resolves the author: the HTTP-auth user set in
+    /// the task-local, else fall back to the first admin for stdio/local
+    /// sessions. Returns `(user_id, is_admin)` for the author-or-admin
+    /// ownership check.
+    fn resolve_comment_actor(&self) -> Result<(i64, bool), String> {
+        match super::current_auth_user() {
+            Some(u) => Ok((u.id, u.is_admin)),
+            None => match self.read(queries::users::first_admin)? {
+                Some(admin) => Ok((admin.id, admin.is_admin)),
+                None => Err("no admin user exists to attribute comment edits to.".into()),
+            },
+        }
     }
 
     /// LIF-198: if `step_id` has a linked issue, require `min` role on that
@@ -1969,6 +2001,81 @@ impl LificMcp {
                 }
                 out
             }
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(
+        description = "Edit an existing comment's content by its id (the handle add_comment returns). Only the comment's author or an admin may edit it. Re-resolves @mentions against the parent project's visible members."
+    )]
+    fn edit_comment(&self, Parameters(input): Parameters<EditCommentInput>) -> String {
+        // Resolve the acting user the same way add_comment does: the
+        // task-local HTTP-auth user, else fall back to the first admin for
+        // stdio/local sessions.
+        let (user_id, is_admin) = match self.resolve_comment_actor() {
+            Ok(u) => u,
+            Err(e) => return format!("Error: {e}"),
+        };
+
+        // Ownership: only the author or an admin may edit (mirrors
+        // api::comments::update_comment_handler).
+        let existing = match self.read(|conn| queries::comments::get_comment(conn, input.comment_id))
+        {
+            Ok(c) => c,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if existing.user_id != user_id && !is_admin {
+            return "Error: you can only edit your own comments".into();
+        }
+
+        // LIF-263: recompute the mention set against the parent project's
+        // visible members, resolving the project from the comment's parent.
+        let project_id = match self.read(|conn| resolve_comment_project(conn, &existing)) {
+            Ok(p) => p,
+            Err(e) => return format!("Error: {e}"),
+        };
+        let member_scoped = match crate::authz::authz_enforced(&self.db) {
+            Ok(v) => v,
+            Err(e) => return format!("Error: {e}"),
+        };
+
+        match self.write(|conn| {
+            let candidates =
+                queries::comments::mention_candidates(conn, project_id, member_scoped)?;
+            let c = queries::comments::update_comment(conn, input.comment_id, &input.content)?;
+            queries::comments::sync_mentions(conn, c.id, &c.content, &candidates)?;
+            Ok(c)
+        }) {
+            // Don't echo the new content back — the agent already supplied it
+            // (LIF-115). The id is the stable handle.
+            Ok(c) => format!("Comment #{} edited at {}", c.id, c.updated_at),
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(
+        description = "Delete a comment by its id (the handle add_comment returns). Only the comment's author or an admin may delete it."
+    )]
+    fn delete_comment(&self, Parameters(input): Parameters<DeleteCommentInput>) -> String {
+        // Resolve the acting user the same way add_comment does.
+        let (user_id, is_admin) = match self.resolve_comment_actor() {
+            Ok(u) => u,
+            Err(e) => return format!("Error: {e}"),
+        };
+
+        // Ownership: only the author or an admin may delete (mirrors
+        // api::comments::delete_comment_handler).
+        let existing = match self.read(|conn| queries::comments::get_comment(conn, input.comment_id))
+        {
+            Ok(c) => c,
+            Err(e) => return format!("Error: {e}"),
+        };
+        if existing.user_id != user_id && !is_admin {
+            return "Error: you can only delete your own comments".into();
+        }
+
+        match self.write(|conn| queries::comments::delete_comment(conn, input.comment_id)) {
+            Ok(()) => format!("Comment #{} deleted", input.comment_id),
             Err(e) => format!("Error: {e}"),
         }
     }
@@ -4288,6 +4395,194 @@ mod tests {
             order: Some("newest".into()),
         }));
         assert!(bad.contains("Error"), "got: {bad}");
+    }
+
+    // ── LIF-143: edit_comment / delete_comment ─────────────────────────────
+
+    /// Set `MCP_REQUEST_USER` to `user` (identity for the acting-user
+    /// resolution in edit/delete_comment) and hand the handler lock back so
+    /// the caller holds it for its whole body — same discipline as
+    /// `seed_user`. Create a fresh user first, then call this.
+    fn act_as(user: &models::User) -> tokio::sync::MutexGuard<'static, ()> {
+        let guard = crate::mcp::MCP_HANDLER_LOCK.blocking_lock();
+        *crate::mcp::MCP_REQUEST_USER
+            .lock()
+            .unwrap_or_else(|e: std::sync::PoisonError<_>| e.into_inner()) =
+            Some(models::AuthUser {
+                id: user.id,
+                username: user.username.clone(),
+                display_name: user.display_name.clone(),
+                is_admin: user.is_admin,
+            });
+        guard
+    }
+
+    fn make_user(m: &LificMcp, username: &str, is_admin: bool) -> models::User {
+        let conn = m.db.write().unwrap();
+        let u = queries::users::create_user(
+            &conn,
+            &models::CreateUser {
+                username: username.into(),
+                email: format!("{username}@test.com"),
+                password: "testpassword1".into(),
+                display_name: Some(username.into()),
+                is_admin,
+                is_bot: false,
+            },
+        )
+        .unwrap();
+        drop(conn);
+        u
+    }
+
+    /// Extract the "#N" comment id from an `add_comment` success string.
+    fn comment_id_from(result: &str) -> i64 {
+        result
+            .split('#')
+            .nth(1)
+            .and_then(|s| s.split(|c: char| !c.is_ascii_digit()).next())
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or_else(|| panic!("no comment id in: {result}"))
+    }
+
+    #[test]
+    fn edit_comment_author_can_edit_own() {
+        let m = mcp();
+        seed_project(&m, "Proj", "PRJ");
+        seed_issue(&m, "PRJ", "Editable");
+        let author = make_user(&m, "author", false);
+        let _guard = act_as(&author);
+
+        let added = m.add_comment(Parameters(AddCommentInput {
+            identifier: "PRJ-1".into(),
+            content: "original".into(),
+        }));
+        let cid = comment_id_from(&added);
+
+        let edited = m.edit_comment(Parameters(EditCommentInput {
+            comment_id: cid,
+            content: "revised".into(),
+        }));
+        assert!(edited.contains(&format!("Comment #{cid} edited")), "got: {edited}");
+        // LIF-115: must not echo the new content back.
+        assert!(!edited.contains("revised"), "must not echo content: {edited}");
+
+        // The listing reflects the new body.
+        let listing = m.list_comments(Parameters(ListCommentsInput {
+            identifier: "PRJ-1".into(),
+            ..Default::default()
+        }));
+        assert!(listing.contains("revised"), "got: {listing}");
+        assert!(!listing.contains("original"), "old body should be gone: {listing}");
+    }
+
+    #[test]
+    fn delete_comment_author_can_delete_own() {
+        let m = mcp();
+        seed_project(&m, "Proj", "PRJ");
+        seed_issue(&m, "PRJ", "Deletable");
+        let author = make_user(&m, "author", false);
+        let _guard = act_as(&author);
+
+        let added = m.add_comment(Parameters(AddCommentInput {
+            identifier: "PRJ-1".into(),
+            content: "delete me".into(),
+        }));
+        let cid = comment_id_from(&added);
+
+        let deleted = m.delete_comment(Parameters(DeleteCommentInput { comment_id: cid }));
+        assert!(deleted.contains(&format!("Comment #{cid} deleted")), "got: {deleted}");
+
+        let listing = m.list_comments(Parameters(ListCommentsInput {
+            identifier: "PRJ-1".into(),
+            ..Default::default()
+        }));
+        assert!(listing.contains("No comments"), "comment should be gone: {listing}");
+    }
+
+    #[test]
+    fn edit_and_delete_comment_refuse_non_author_non_admin() {
+        let m = mcp();
+        seed_project(&m, "Proj", "PRJ");
+        seed_issue(&m, "PRJ", "Guarded");
+        let author = make_user(&m, "author", false);
+        let other = make_user(&m, "other", false);
+
+        // Author posts a comment.
+        let cid = {
+            let _g = act_as(&author);
+            let added = m.add_comment(Parameters(AddCommentInput {
+                identifier: "PRJ-1".into(),
+                content: "mine".into(),
+            }));
+            comment_id_from(&added)
+        };
+
+        // A non-author, non-admin is refused for both operations.
+        let _guard = act_as(&other);
+        let edit = m.edit_comment(Parameters(EditCommentInput {
+            comment_id: cid,
+            content: "hijacked".into(),
+        }));
+        assert!(
+            edit.contains("Error") && edit.contains("only edit your own"),
+            "non-author edit must be refused: {edit}"
+        );
+
+        let del = m.delete_comment(Parameters(DeleteCommentInput { comment_id: cid }));
+        assert!(
+            del.contains("Error") && del.contains("only delete your own"),
+            "non-author delete must be refused: {del}"
+        );
+
+        // The comment survives untouched.
+        let listing = m.list_comments(Parameters(ListCommentsInput {
+            identifier: "PRJ-1".into(),
+            ..Default::default()
+        }));
+        assert!(listing.contains("mine"), "comment must survive: {listing}");
+    }
+
+    #[test]
+    fn admin_can_delete_another_users_comment() {
+        let m = mcp();
+        seed_project(&m, "Proj", "PRJ");
+        seed_issue(&m, "PRJ", "AdminTarget");
+        let author = make_user(&m, "author", false);
+        let admin = make_user(&m, "boss", true);
+
+        let cid = {
+            let _g = act_as(&author);
+            let added = m.add_comment(Parameters(AddCommentInput {
+                identifier: "PRJ-1".into(),
+                content: "regular user's comment".into(),
+            }));
+            comment_id_from(&added)
+        };
+
+        let _guard = act_as(&admin);
+        let deleted = m.delete_comment(Parameters(DeleteCommentInput { comment_id: cid }));
+        assert!(deleted.contains("deleted"), "admin delete must succeed: {deleted}");
+    }
+
+    #[test]
+    fn edit_and_delete_comment_unknown_id_errors_cleanly() {
+        let m = mcp();
+        seed_project(&m, "Proj", "PRJ");
+        seed_issue(&m, "PRJ", "Empty");
+        let author = make_user(&m, "author", false);
+        let _guard = act_as(&author);
+
+        let edit = m.edit_comment(Parameters(EditCommentInput {
+            comment_id: 9999,
+            content: "nope".into(),
+        }));
+        assert!(edit.contains("Error"), "unknown edit must error: {edit}");
+        assert!(edit.contains("9999"), "error should name the id: {edit}");
+
+        let del = m.delete_comment(Parameters(DeleteCommentInput { comment_id: 9999 }));
+        assert!(del.contains("Error"), "unknown delete must error: {del}");
+        assert!(del.contains("9999"), "error should name the id: {del}");
     }
 
     // ── search result_type filter, sort validation, pagination ────────────

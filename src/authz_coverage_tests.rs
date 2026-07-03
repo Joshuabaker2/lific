@@ -336,7 +336,7 @@ fn rest_manifest_exempt_reasons_are_non_empty() {
 /// `src/mcp/mod.rs`) — not a hand-copied list of `#[tool]` fns, so a
 /// rename that only touches one side still gets caught.
 fn mcp_manifest() -> HashMap<&'static str, Classification> {
-    use Classification::{Filtered, Gated, Mixed};
+    use Classification::{Exempt, Filtered, Gated, Mixed};
     use Gate::*;
 
     HashMap::from([
@@ -383,6 +383,16 @@ fn mcp_manifest() -> HashMap<&'static str, Classification> {
         ),
         ("add_comment", Gated(Viewer)),
         ("list_comments", Gated(Viewer)),
+        // LIF-143: mirror REST PUT/DELETE /api/comments/{id} — author-or-admin
+        // ownership check, not a project-role gate.
+        (
+            "edit_comment",
+            Exempt("author-or-admin ownership check (ownership, not project role)"),
+        ),
+        (
+            "delete_comment",
+            Exempt("author-or-admin ownership check (ownership, not project role)"),
+        ),
         ("create_plan", Gated(Maintainer)),
         ("get_plan", Gated(Viewer)),
         ("edit_plan_step", Gated(Maintainer)),
