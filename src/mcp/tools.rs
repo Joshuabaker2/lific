@@ -705,8 +705,8 @@ impl LificMcp {
                     status: input.status.clone().unwrap_or("backlog".into()),
                     priority: input.priority.clone().unwrap_or("none".into()),
                     module_id,
-                    start_date: None,
-                    target_date: None,
+                    start_date: input.start_date.clone(),
+                    target_date: input.target_date.clone(),
                     labels: input.labels.clone().unwrap_or_default(),
                     source: None,
                 },
@@ -750,8 +750,8 @@ impl LificMcp {
                     priority: input.priority.clone(),
                     module_id,
                     sort_order: None,
-                    start_date: None,
-                    target_date: None,
+                    start_date: input.start_date.clone(),
+                    target_date: input.target_date.clone(),
                     labels: input.labels.clone(),
                 },
             )
@@ -2272,6 +2272,7 @@ mod tests {
             priority: None,
             module: None,
             labels: None,
+            ..Default::default()
         }));
         assert!(result.starts_with("Created"), "got: {result}");
         result
@@ -2459,6 +2460,7 @@ mod tests {
             priority: Some("high".into()),
             module: None,
             labels: Some(vec!["feature".into()]),
+            ..Default::default()
         }));
         assert!(result.contains("OPT-1"), "got: {result}");
 
@@ -2485,10 +2487,80 @@ mod tests {
             description: None,
             module: None,
             labels: None,
+            ..Default::default()
         }));
         assert!(result.contains("Renamed"), "got: {result}");
         assert!(result.contains("active"), "got: {result}");
         assert!(result.contains("urgent"), "got: {result}");
+    }
+
+    // LIF-144: start_date/target_date are settable through the MCP layer.
+
+    #[test]
+    fn create_issue_persists_target_date() {
+        let m = mcp();
+        seed_project(&m, "Test", "SCH");
+
+        let result = m.create_issue(Parameters(CreateIssueInput {
+            project: "SCH".into(),
+            title: "Scheduled".into(),
+            target_date: Some("2026-06-15".into()),
+            ..Default::default()
+        }));
+        assert!(result.contains("SCH-1"), "got: {result}");
+
+        let conn = m.db.read().unwrap();
+        let id = queries::resolve_identifier(&conn, "SCH-1").unwrap();
+        let issue = queries::get_issue(&conn, id).unwrap();
+        assert_eq!(issue.target_date.as_deref(), Some("2026-06-15"));
+        assert_eq!(issue.start_date, None);
+    }
+
+    #[test]
+    fn update_issue_sets_start_date() {
+        let m = mcp();
+        seed_project(&m, "Test", "STD");
+        seed_issue(&m, "STD", "Original");
+
+        let result = m.update_issue(Parameters(UpdateIssueInput {
+            identifier: "STD-1".into(),
+            start_date: Some("2026-06-01".into()),
+            ..Default::default()
+        }));
+        assert!(result.contains("STD-1"), "got: {result}");
+
+        let conn = m.db.read().unwrap();
+        let id = queries::resolve_identifier(&conn, "STD-1").unwrap();
+        let issue = queries::get_issue(&conn, id).unwrap();
+        assert_eq!(issue.start_date.as_deref(), Some("2026-06-01"));
+    }
+
+    #[test]
+    fn update_issue_omitting_dates_leaves_them_unchanged() {
+        let m = mcp();
+        seed_project(&m, "Test", "UNC");
+
+        m.create_issue(Parameters(CreateIssueInput {
+            project: "UNC".into(),
+            title: "Prescheduled".into(),
+            start_date: Some("2026-01-01".into()),
+            target_date: Some("2026-02-01".into()),
+            ..Default::default()
+        }));
+
+        // Update an unrelated field; omit both dates.
+        m.update_issue(Parameters(UpdateIssueInput {
+            identifier: "UNC-1".into(),
+            title: Some("Renamed".into()),
+            ..Default::default()
+        }));
+
+        let conn = m.db.read().unwrap();
+        let id = queries::resolve_identifier(&conn, "UNC-1").unwrap();
+        let issue = queries::get_issue(&conn, id).unwrap();
+        assert_eq!(issue.title, "Renamed");
+        assert_eq!(issue.start_date.as_deref(), Some("2026-01-01"));
+        assert_eq!(issue.target_date.as_deref(), Some("2026-02-01"));
     }
 
     #[test]
@@ -2535,6 +2607,7 @@ mod tests {
             description: None,
             module: None,
             labels: None,
+            ..Default::default()
         }));
         m.create_issue(Parameters(CreateIssueInput {
             project: "LST".into(),
@@ -2544,6 +2617,7 @@ mod tests {
             description: None,
             module: None,
             labels: None,
+            ..Default::default()
         }));
 
         // Filter by status
@@ -2728,6 +2802,7 @@ mod tests {
             priority: None,
             module: None,
             labels: None,
+            ..Default::default()
         }));
         m.create_issue(Parameters(CreateIssueInput {
             project: "BRD".into(),
@@ -2737,6 +2812,7 @@ mod tests {
             priority: None,
             module: None,
             labels: None,
+            ..Default::default()
         }));
 
         let result = m.get_board(Parameters(GetBoardInput {
@@ -2761,6 +2837,7 @@ mod tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }));
         }
 
@@ -2793,6 +2870,7 @@ mod tests {
                 priority: Some(priority.into()),
                 module: None,
                 labels: None,
+                ..Default::default()
             }));
         }
 
@@ -3558,6 +3636,7 @@ mod tests {
             priority: None,
             module: None,
             labels: None,
+            ..Default::default()
         }));
         assert!(result.starts_with("Created"), "got: {result}");
         result
@@ -3733,6 +3812,7 @@ mod tests {
             priority: Some("high".into()),
             module: None,
             labels: None,
+            ..Default::default()
         }));
 
         m.edit_issue(Parameters(EditIssueInput {
@@ -4534,6 +4614,7 @@ mod tests {
                     priority: None,
                     module: None,
                     labels: None,
+                    ..Default::default()
                 }));
                 assert!(result.starts_with("Created"), "got: {result}");
             })
@@ -4795,6 +4876,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(created.starts_with("Created"), "got: {created}");
@@ -4870,6 +4952,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(created.starts_with("Created"), "got: {created}");
@@ -4960,6 +5043,7 @@ mod authz_gating_tests {
                     priority: None,
                     module: None,
                     labels: None,
+                    ..Default::default()
                 }))
             });
             assert_eq!(
@@ -4984,6 +5068,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(created.starts_with("Created"), "got: {created}");
@@ -5048,6 +5133,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(created.starts_with("Created"), "got: {created}");
@@ -5239,6 +5325,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(issue_a.starts_with("Created"), "got: {issue_a}");
@@ -5268,6 +5355,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(issue_b.starts_with("Created"), "got: {issue_b}");
@@ -5349,6 +5437,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(foreign_issue.starts_with("Created"), "got: {foreign_issue}");
@@ -5446,6 +5535,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(!is_forbidden(&created), "bot inherits maintainer's write access: {created}");
@@ -5471,6 +5561,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(created.starts_with("Created"), "got: {created}");
@@ -5520,6 +5611,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(created.starts_with("Created"), "got: {created}");
@@ -5539,6 +5631,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(!is_forbidden(&write), "admin must write to a project they're not a member of: {write}");
@@ -5581,6 +5674,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(created.starts_with("Created"), "got: {created}");
@@ -5764,6 +5858,7 @@ mod authz_gating_tests {
                 priority: None,
                 module: None,
                 labels: None,
+                ..Default::default()
             }))
         });
         assert!(
