@@ -14,11 +14,11 @@ import { TeamsScene } from "./scenes/TeamsScene";
 import { Cta } from "./scenes/Cta";
 
 /**
- * Drop a licensed track at promo/public/music.mp3 and flip this on.
- * The video is designed sound-off first (X autoplays muted), so the
- * track is an enhancer, never a dependency.
+ * music.wav: composed for this cut — 130 BPM, 32 bars, drops on bar 9
+ * (the reveal) and bar 17 (the kanban grab). The video is still
+ * designed sound-off first (X autoplays muted).
  */
-const MUSIC = false;
+const MUSIC = true;
 
 const cut = linearTiming({ durationInFrames: TRANSITION });
 const springy = springTiming({
@@ -29,7 +29,7 @@ const springy = springTiming({
 export const Ad: React.FC = () => {
   return (
     <>
-      {MUSIC ? <Audio src={staticFile("music.mp3")} volume={0.8} /> : null}
+      {MUSIC ? <Audio src={staticFile("music.wav")} /> : null}
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={SCENES.hook}>
           <Hook />

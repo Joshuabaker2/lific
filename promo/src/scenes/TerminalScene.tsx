@@ -16,15 +16,16 @@ const LINES: TermLine[] = [
   { at: 98, text: "INFO database ready path=lific.db", kind: "out" },
   { at: 106, text: "INFO API key auth enabled active_keys=1", kind: "out" },
   {
-    at: 118,
+    at: 117,
     text: "INFO lific server started (REST + MCP + OAuth at /mcp) addr=0.0.0.0:8080",
     kind: "info",
   },
 ];
 
-/** `lific start` is submitted here; the server line lands at 118. */
+/** `lific start` is submitted here; the server line lands on bar 13
+ *  of the 130 BPM grid (global frame 665). */
 const START_AT = 78;
-const DEPLOYED_AT = 118;
+const DEPLOYED_AT = 117;
 
 export const TerminalScene: React.FC = () => {
   const frame = useCurrentFrame();

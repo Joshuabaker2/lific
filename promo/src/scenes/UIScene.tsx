@@ -62,9 +62,10 @@ const CARD_H = 87;
 const PITCH = CARD_H + 8;
 const slotYAt = (slot: number) => cardsTop() + slot * PITCH;
 
-// Drag: LIF-214 (todo slot 1) -> active slot 2, frames 55..105.
-const DRAG_START = 55;
-const DRAG_END = 105;
+// Drag: LIF-214 (todo slot 1) -> active slot 2. The grab lands on the
+// track's second drop: bar 17 of the 130 BPM grid (global frame 886).
+const DRAG_START = 75;
+const DRAG_END = 125;
 const MOVED = "LIF-214";
 
 const ease = Easing.bezier(0.4, 0, 0.2, 1);
@@ -105,7 +106,7 @@ export const UIScene: React.FC = () => {
 
   const CURSOR: Waypoint[] = [
     { at: 14, x: colX(2) + 220, y: 500 },
-    { at: 48, x: srcX + 150, y: srcY + 40 },
+    { at: DRAG_START - 7, x: srcX + 150, y: srcY + 40 },
     { at: DRAG_START, x: srcX + 150, y: srcY + 40, click: true },
     { at: DRAG_END, x: dstX + 150, y: dstY + 40 },
     { at: DRAG_END + 8, x: dstX + 150, y: dstY + 40, click: true },

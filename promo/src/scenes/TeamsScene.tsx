@@ -42,11 +42,12 @@ const SIGNUPS_OPEN = { x: 311, y: 445 };
 const AUTHZ_ENFORCED = { x: 402, y: 403 };
 const SCROLL_MAX = 430;
 
-// ── Beat timing (scene-local frames, 0..269) ─────────────────
-const SIGNUPS_CLICK = 44;
+// ── Beat timing (scene-local; clicks land on beats 93 and 100 of
+// the 130 BPM grid — the Enforced flip tops phrase 4, bar 26) ────
+const SIGNUPS_CLICK = 48;
 const SCROLL_START = 96;
 const SCROLL_END = 124;
-const AUTHZ_CLICK = 138;
+const AUTHZ_CLICK = 145;
 const CURSOR_EXIT = AUTHZ_CLICK + 34;
 
 const ease = Easing.bezier(0.4, 0, 0.2, 1);
@@ -163,7 +164,7 @@ export const TeamsScene: React.FC = () => {
     extrapolateRight: "clamp",
     easing: ease,
   });
-  const drift = interpolate(frame, [SIGNUPS_CLICK + 18, 270], [0, 0.03], {
+  const drift = interpolate(frame, [SIGNUPS_CLICK + 18, 261], [0, 0.03], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });

@@ -17,9 +17,10 @@ import { KineticLine } from "../components/text";
  * or HEAVY. The reveal ("One binary... Free & open source") resolves it.
  */
 
+// Slams on beats 3 and 4 of bar 1 (130 BPM grid).
 const SUB_AT = 26;
-const PAID_AT = 46;
-const HEAVY_AT = 60;
+const PAID_AT = 42;
+const HEAVY_AT = 55;
 
 /** A word that slams in: overshoot scale-down with a hard settle. */
 const Slam: React.FC<{ at: number; color: string; children: string }> = ({
