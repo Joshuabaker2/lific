@@ -234,8 +234,8 @@ export const UIScene: React.FC = () => {
             textShadow: "0 4px 30px rgba(0,0,0,0.9)",
           }}
         >
-          Issues, kanban, pages, modules —{" "}
-          <span style={{ color: C.textMuted }}>the whole tracker, no seat math.</span>
+          Issues, kanban, pages, modules.{" "}
+          <span style={{ color: C.textMuted }}>The whole tracker, no seat math.</span>
         </div>
       </AbsoluteFill>
     </Background>

@@ -80,8 +80,13 @@ export const AgitateJira: React.FC = () => (
       <FadeUp delay={15} duration={14}>
         <div style={{ display: "flex", gap: 20 }}>
           <FactChip>$7.91 per user / month</FactChip>
-          <FactChip>famously slow</FactChip>
+          <FactChip>&ldquo;incredibly slow, almost unusable&rdquo;</FactChip>
           <FactChip>built for the enterprise, not for you</FactChip>
+        </div>
+      </FadeUp>
+      <FadeUp delay={30} duration={14}>
+        <div style={{ fontFamily: BODY, fontSize: 22, color: C.textFaint }}>
+          quote: Hacker News, Dec 2024. A recurring complaint since 2020.
         </div>
       </FadeUp>
     </AbsoluteFill>
@@ -108,7 +113,7 @@ export const AgitateLinear: React.FC = () => (
           }}
         >
           <div style={{ display: "flex", gap: 20 }}>
-            <FactChip>beautiful — credit where due</FactChip>
+            <FactChip>beautiful, credit where due</FactChip>
             <FactChip>$10–16 per user / month</FactChip>
           </div>
           <div style={{ display: "flex", gap: 20 }}>

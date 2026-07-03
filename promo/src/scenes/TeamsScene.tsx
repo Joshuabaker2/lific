@@ -28,7 +28,7 @@ import { Cursor, Waypoint } from "../components/Cursor";
 // Winning copy from the adversarial writer/judge round (see LIF-260) —
 // visible for the entire scene.
 const COPY_HEADLINE = "Team-ready. Still yours alone.";
-const COPY_SUB = "Open signups, scope projects to members — or stay solo on the same binary.";
+const COPY_SUB = "Open signups, scope projects to members. Or stay solo on the same binary.";
 
 // ── App geometry (native CSS px), zoomed for phone legibility ─
 const APP_W = 1180;

@@ -86,7 +86,7 @@ export const TerminalScene: React.FC = () => {
           Deploys in{" "}
           <span style={{ color: C.success, fontWeight: 600 }}>seconds.</span>{" "}
           <span style={{ color: C.textMuted }}>
-            REST, MCP, web UI — one process. No containers.
+            REST, MCP, web UI. One process. No containers.
           </span>
         </div>
       </AbsoluteFill>

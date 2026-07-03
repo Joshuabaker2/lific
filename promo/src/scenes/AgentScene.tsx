@@ -97,7 +97,7 @@ export const AgentScene: React.FC = () => {
             tool1At={TOOL_1}
             tool2="lific_create_issue [title=Rate-limit login endpoint]"
             tool2At={TOOL_2}
-            reply="Done — LIF-198 closed, follow-up filed as LIF-232."
+            reply="Done. LIF-198 closed, follow-up filed as LIF-232."
             replyAt={REPLY}
             completeAt={COMPLETE}
             completeText=" · Agent · 4.1s"
