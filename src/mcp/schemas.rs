@@ -346,6 +346,24 @@ pub struct ListCommentsInput {
     pub order: Option<String>,
 }
 
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+pub struct EditCommentInput {
+    #[schemars(
+        description = "Comment id (the numeric handle returned by add_comment / shown by list_comments)"
+    )]
+    pub comment_id: i64,
+    #[schemars(description = "New comment content (markdown)")]
+    pub content: String,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+pub struct DeleteCommentInput {
+    #[schemars(
+        description = "Comment id (the numeric handle returned by add_comment / shown by list_comments)"
+    )]
+    pub comment_id: i64,
+}
+
 // ── Plans (LIF-168/169/170/171) ──────────────────────────────
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
