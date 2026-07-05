@@ -610,7 +610,7 @@
 />
 
 {#snippet topbarContent()}
-  <div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2 w-full">
+  <div class="relative flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2 w-full">
     <!-- Breadcrumb: Project > Pages. Project segment collapses below sm. -->
     <div class="flex items-center gap-1.5 shrink-0">
       <button
@@ -730,34 +730,43 @@
         </Tooltip>
       {/if}
 
-      <!-- LIF-117: search. Collapsed-to-icon, expands inline on click. -->
+      <!-- LIF-117: search. Collapsed-to-icon, expands inline on click.
+           Below sm the expanded field overlays the whole topbar row instead
+           of joining it — a fixed-width input in an already-full shrink-0
+           row pushes the row's min width past the viewport (LIF-271). -->
       {#if searchExpanded}
-        <div class="relative">
-          <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-faint)]">
-            <Search size={12} />
+        <div
+          class="max-sm:absolute max-sm:inset-0 max-sm:z-20 max-sm:bg-[var(--chrome)]
+                 max-sm:flex max-sm:items-center max-sm:px-3 max-sm:py-1.5"
+        >
+          <div class="relative w-full sm:w-auto">
+            <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-faint)]">
+              <Search size={12} />
+            </div>
+            <!-- svelte-ignore a11y_autofocus -->
+            <input
+              type="text"
+              placeholder="Search pages..."
+              enterkeyhint="search"
+              bind:this={searchInputEl}
+              bind:value={searchQuery}
+              onblur={maybeCollapseSearch}
+              onkeydown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  searchQuery = "";
+                  searchExpanded = false;
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              }}
+              class="w-full sm:w-[200px] pl-7 pr-2 py-1 text-body-sm rounded-md
+                     border border-[var(--border)] bg-[var(--surface)]
+                     text-[var(--text)] placeholder:text-[var(--text-faint)]
+                     focus:border-[var(--accent)]
+                     focus:shadow-[0_0_0_3px_var(--accent-subtle)]
+                     outline-none transition-colors"
+            />
           </div>
-          <!-- svelte-ignore a11y_autofocus -->
-          <input
-            type="text"
-            placeholder="Search pages..."
-            bind:this={searchInputEl}
-            bind:value={searchQuery}
-            onblur={maybeCollapseSearch}
-            onkeydown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                searchQuery = "";
-                searchExpanded = false;
-                (e.currentTarget as HTMLInputElement).blur();
-              }
-            }}
-            class="w-[200px] pl-7 pr-2 py-1 text-body-sm rounded-md
-                   border border-[var(--border)] bg-[var(--surface)]
-                   text-[var(--text)] placeholder:text-[var(--text-faint)]
-                   focus:border-[var(--accent)]
-                   focus:shadow-[0_0_0_3px_var(--accent-subtle)]
-                   outline-none transition-colors"
-          />
         </div>
       {:else}
         <Tooltip content="Search" placement="bottom">
@@ -1318,9 +1327,10 @@
         <span class="text-body-lg font-medium text-[var(--text)] flex-1 truncate">
           {folder.name}
         </span>
-        <!-- Hover actions (LIF-234: hidden for viewers) -->
+        <!-- Hover actions (LIF-234: hidden for viewers). LIF-275: always
+             visible on touch — hover-reveal never fires there. -->
         {#if canEdit}
-        <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity">
           <button
             class="size-6 flex items-center justify-center rounded
                    text-[var(--text-faint)] hover:text-[var(--accent)]
@@ -1425,7 +1435,7 @@
               class="shrink-0 transition
                      {page.pinned
                 ? 'text-[var(--accent)]'
-                : 'text-[var(--text-faint)] opacity-0 group-hover:opacity-100 hover:text-[var(--accent)]'}"
+                : 'text-[var(--text-faint)] opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 hover:text-[var(--accent)]'}"
               role="button"
               tabindex="0"
               title={page.pinned ? "Unpin" : "Pin to top"}

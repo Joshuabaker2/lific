@@ -71,7 +71,7 @@
   let filterCount = $derived(view.activeFilterCount());
 </script>
 
-<div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2 w-full">
+<div class="relative flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2 w-full">
 
   <!-- ── LEFT ZONE: scope + view switcher ───────────────────── -->
   <div class="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
@@ -436,34 +436,44 @@
     </div>
     {/if}
 
-    <!-- Search: collapsed to icon, expands inline on click or `/`. -->
+    <!-- Search: collapsed to icon, expands inline on click or `/`.
+         Below sm the expanded field can't join the row — the row is already
+         full of shrink-0 controls, and adding a fixed-width input pushes the
+         row's min width past the viewport (LIF-271: the whole list appeared
+         "zoomed out"). Instead it overlays the entire topbar row. -->
     {#if view.searchExpanded}
-      <div class="relative">
-        <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-faint)]">
-          <Search size={12} />
+      <div
+        class="max-sm:absolute max-sm:inset-0 max-sm:z-20 max-sm:bg-[var(--chrome)]
+               max-sm:flex max-sm:items-center max-sm:px-3 max-sm:py-1.5"
+      >
+        <div class="relative w-full sm:w-auto">
+          <div class="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-faint)]">
+            <Search size={12} />
+          </div>
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            type="text"
+            placeholder="Search issues..."
+            enterkeyhint="search"
+            bind:this={searchInputEl}
+            bind:value={view.searchQuery}
+            onblur={onMaybeCollapseSearch}
+            onkeydown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                view.searchQuery = "";
+                view.searchExpanded = false;
+                (e.currentTarget as HTMLInputElement).blur();
+              }
+            }}
+            class="w-full sm:w-[200px] pl-7 pr-2 py-1 text-body-sm rounded-md
+                   border border-[var(--border)] bg-[var(--surface)]
+                   text-[var(--text)] placeholder:text-[var(--text-faint)]
+                   focus:border-[var(--accent)]
+                   focus:shadow-[0_0_0_3px_var(--accent-subtle)]
+                   outline-none transition-colors"
+          />
         </div>
-        <!-- svelte-ignore a11y_autofocus -->
-        <input
-          type="text"
-          placeholder="Search issues..."
-          bind:this={searchInputEl}
-          bind:value={view.searchQuery}
-          onblur={onMaybeCollapseSearch}
-          onkeydown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              view.searchQuery = "";
-              view.searchExpanded = false;
-              (e.currentTarget as HTMLInputElement).blur();
-            }
-          }}
-          class="w-[200px] pl-7 pr-2 py-1 text-body-sm rounded-md
-                 border border-[var(--border)] bg-[var(--surface)]
-                 text-[var(--text)] placeholder:text-[var(--text-faint)]
-                 focus:border-[var(--accent)]
-                 focus:shadow-[0_0_0_3px_var(--accent-subtle)]
-                 outline-none transition-colors"
-        />
       </div>
     {:else}
       <Tooltip content="Search  ·  /" placement="bottom">
