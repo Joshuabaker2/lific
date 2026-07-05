@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{Request, StatusCode},
+    http::{HeaderMap, Method, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -171,6 +171,40 @@ pub struct ApiKeyInfo {
     pub revoked: bool,
 }
 
+/// LIF-267: parse the `lific_token` session cookie a browser sends on same-site
+/// GETs. Splits the `Cookie` header on `;`, trims each pair, and returns the
+/// `lific_token` value ONLY when it looks like a session token (`lific_sess_`
+/// prefix). API keys (`lific_sk`) and OAuth tokens (`lific_at_`) are never
+/// accepted via cookie — the cookie path authenticates the browser session and
+/// nothing else. Returns `None` when the header/cookie is absent or the value
+/// isn't a session token.
+fn session_cookie_token(headers: &HeaderMap) -> Option<String> {
+    let cookies = headers.get("cookie").and_then(|v| v.to_str().ok())?;
+    let value = cookies.split(';').find_map(|c| {
+        c.trim()
+            .strip_prefix("lific_token=")
+            .map(|v| v.trim().to_string())
+    })?;
+    value.starts_with("lific_sess_").then_some(value)
+}
+
+/// LIF-267: is this request a `GET /api/attachments/{id}` download, where `{id}`
+/// is a single numeric segment (trailing slash tolerated)? Only this exact
+/// shape is eligible for the session-cookie fallback: it's the browser-native
+/// `<img src>` subresource path. The list route `/api/attachments` (no id) and
+/// any deeper path like `/api/attachments/5/extra` are excluded, so the
+/// fallback never widens beyond a single read-only download.
+fn is_attachment_download(method: &Method, path: &str) -> bool {
+    if method != Method::GET {
+        return false;
+    }
+    let Some(rest) = path.strip_prefix("/api/attachments/") else {
+        return false;
+    };
+    let id = rest.strip_suffix('/').unwrap_or(rest);
+    !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())
+}
+
 /// Axum middleware that validates Bearer tokens and resolves user identity.
 ///
 /// After successful auth, inserts `Extension<Option<AuthUser>>` into the request:
@@ -216,6 +250,48 @@ pub async fn require_api_key(
     );
 
     let Some(token) = token else {
+        // LIF-267: session-cookie fallback, scoped to GET /api/attachments/{id}.
+        // A browser-native `<img src="/api/attachments/N">` cannot attach an
+        // Authorization header, so inline attachment images arrived here
+        // credential-less and 401'd. When (and only when) this is the
+        // read-only attachment download route on a GET, accept the browser's
+        // `lific_token` session cookie in lieu of the header and resolve it
+        // exactly like a header-borne session token. This reopens NO CSRF
+        // surface (GET is a safe method; every mutation stays header-only) and
+        // leaks nothing cross-site (the cookie is SameSite=Lax, so it is never
+        // sent on cross-site subresource requests). The download handler still
+        // runs its own project-scoped `authorize_read`, so gating is unchanged
+        // — this just lets the browser present the credential it can.
+        if is_attachment_download(request.method(), request.uri().path())
+            && let Some(cookie_token) = session_cookie_token(request.headers())
+        {
+            let user = {
+                let conn = match auth.db.write() {
+                    Ok(c) => c,
+                    Err(_) => {
+                        return (StatusCode::INTERNAL_SERVER_ERROR, "database error")
+                            .into_response();
+                    }
+                };
+                crate::db::queries::users::validate_session(&conn, &cookie_token)
+            };
+            if let Ok(u) = user {
+                let auth_user = crate::db::models::AuthUser {
+                    id: u.id,
+                    username: u.username,
+                    display_name: u.display_name,
+                    is_admin: u.is_admin,
+                };
+                let actor = crate::actor::ActorCtx {
+                    user_id: Some(auth_user.id),
+                    transport: crate::actor::Transport::Web,
+                };
+                request.extensions_mut().insert(Some(auth_user));
+                return crate::actor::scope(actor, next.run(request)).await;
+            }
+            // Missing/invalid/expired cookie session falls through to 401 below.
+        }
+
         if is_mcp_request {
             info!("/mcp rejected: no Authorization header (discovery probe or dropped token)");
         }
@@ -1169,5 +1245,98 @@ mod tests {
             StatusCode::FORBIDDEN,
             "a user-bound key for a non-member must be denied — it is not an operator credential"
         );
+    }
+
+    // ── LIF-267: attachment-download matcher + session-cookie parsing ───────
+
+    #[test]
+    fn is_attachment_download_matches_numeric_id_get() {
+        assert!(is_attachment_download(
+            &Method::GET,
+            "/api/attachments/5"
+        ));
+        assert!(is_attachment_download(
+            &Method::GET,
+            "/api/attachments/12345"
+        ));
+    }
+
+    #[test]
+    fn is_attachment_download_tolerates_trailing_slash() {
+        assert!(is_attachment_download(
+            &Method::GET,
+            "/api/attachments/7/"
+        ));
+    }
+
+    #[test]
+    fn is_attachment_download_excludes_list_route() {
+        // The list route (no id) must stay header-only.
+        assert!(!is_attachment_download(&Method::GET, "/api/attachments"));
+        assert!(!is_attachment_download(&Method::GET, "/api/attachments/"));
+    }
+
+    #[test]
+    fn is_attachment_download_excludes_non_numeric_and_deeper_paths() {
+        assert!(!is_attachment_download(
+            &Method::GET,
+            "/api/attachments/abc"
+        ));
+        assert!(!is_attachment_download(
+            &Method::GET,
+            "/api/attachments/5/extra"
+        ));
+        assert!(!is_attachment_download(
+            &Method::GET,
+            "/api/attachments/5x"
+        ));
+    }
+
+    #[test]
+    fn is_attachment_download_excludes_non_get_methods() {
+        assert!(!is_attachment_download(
+            &Method::DELETE,
+            "/api/attachments/5"
+        ));
+        assert!(!is_attachment_download(
+            &Method::POST,
+            "/api/attachments/5"
+        ));
+    }
+
+    #[test]
+    fn session_cookie_token_extracts_only_session_prefix() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "cookie",
+            "foo=bar; lific_token=lific_sess_abc123; baz=qux".parse().unwrap(),
+        );
+        assert_eq!(
+            session_cookie_token(&headers).as_deref(),
+            Some("lific_sess_abc123")
+        );
+    }
+
+    #[test]
+    fn session_cookie_token_rejects_non_session_values() {
+        // An API key or OAuth token in the cookie is never accepted.
+        for value in ["lific_sk-live-xxx", "lific_at_xxx", "garbage"] {
+            let mut headers = HeaderMap::new();
+            headers.insert("cookie", format!("lific_token={value}").parse().unwrap());
+            assert_eq!(
+                session_cookie_token(&headers),
+                None,
+                "non-session cookie value must be rejected: {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn session_cookie_token_none_when_absent() {
+        let headers = HeaderMap::new();
+        assert_eq!(session_cookie_token(&headers), None);
+        let mut headers = HeaderMap::new();
+        headers.insert("cookie", "other=1; another=2".parse().unwrap());
+        assert_eq!(session_cookie_token(&headers), None);
     }
 }

@@ -884,3 +884,251 @@ mod api_tests {
         std::fs::remove_dir_all(store.dir()).ok();
     }
 }
+
+// ── LIF-267: session-cookie fallback for browser <img> attachment GETs ──────
+//
+// These drive the REAL `require_api_key` middleware (not the `app_as_user`
+// Extension-injection shortcut) so the cookie path is genuinely exercised end
+// to end through the production router. A browser-native `<img>` can't attach
+// an Authorization header, so the middleware must accept the `lific_token`
+// session cookie — but ONLY on `GET /api/attachments/{id}`.
+#[cfg(test)]
+mod cookie_fallback_tests {
+    use crate::api::test_helpers::*;
+    use crate::db::models::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    /// Minimal PNG (magic bytes + filler) the sniffer accepts.
+    fn png_bytes() -> Vec<u8> {
+        let mut v = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        v.extend_from_slice(b"cookie-fallback pixel data");
+        v
+    }
+
+    /// Build a router that wraps the production `api::router` in the real
+    /// `require_api_key` middleware, plus the attachment layers. Returns the
+    /// app and the shared DbPool.
+    fn real_middleware_app(db: crate::db::DbPool) -> axum::Router {
+        let auth_state = crate::auth::AuthState {
+            db: db.clone(),
+            manager: crate::auth::create_key_manager().unwrap(),
+            public_url: "https://example.com".into(),
+        };
+        with_attachment_layers(crate::api::router(db, &[]))
+            .layer(axum::Extension(crate::config::AuthConfig {
+                allow_signup: true,
+                secure_cookies: false,
+            }))
+            .layer(axum::middleware::from_fn_with_state(
+                auth_state,
+                crate::auth::require_api_key,
+            ))
+    }
+
+    /// Create a user and a live session, returning (user_id, session token).
+    fn user_with_session(db: &crate::db::DbPool, username: &str) -> (i64, String) {
+        let conn = db.write().unwrap();
+        let user = crate::db::queries::users::create_user(
+            &conn,
+            &CreateUser {
+                username: username.into(),
+                email: format!("{username}@test.com"),
+                password: "testpassword1".into(),
+                display_name: None,
+                is_admin: false,
+                is_bot: false,
+            },
+        )
+        .unwrap();
+        let session = crate::db::queries::users::create_session(&conn, user.id, None).unwrap();
+        (user.id, session.token)
+    }
+
+    /// Upload a PNG via the header-authed session path and return its id. Also
+    /// proves the ordinary header path still works end to end.
+    async fn upload_png(app: &axum::Router, session: &str) -> i64 {
+        const BOUNDARY: &str = "----lifictestboundary267";
+        let mut body = Vec::new();
+        let push = |b: &mut Vec<u8>, s: &str| b.extend_from_slice(s.as_bytes());
+        push(&mut body, &format!("--{BOUNDARY}\r\n"));
+        push(
+            &mut body,
+            "Content-Disposition: form-data; name=\"file\"; filename=\"shot.png\"\r\n",
+        );
+        push(&mut body, "Content-Type: image/png\r\n\r\n");
+        body.extend_from_slice(&png_bytes());
+        push(&mut body, "\r\n");
+        push(&mut body, &format!("--{BOUNDARY}--\r\n"));
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/attachments")
+                    .header("authorization", format!("Bearer {session}"))
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={BOUNDARY}"),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "upload should succeed");
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let val: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        val["id"].as_i64().unwrap()
+    }
+
+    // 1) Cookie-authed GET on the download route returns 200 with the bytes.
+    #[tokio::test]
+    async fn cookie_authed_download_succeeds() {
+        let db = crate::db::open_memory().unwrap();
+        let app = real_middleware_app(db.clone());
+        let (_uid, session) = user_with_session(&db, "cookieuser");
+        let att_id = upload_png(&app, &session).await;
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/attachments/{att_id}"))
+                    // No Authorization header — only the browser session cookie.
+                    .header("cookie", format!("lific_token={session}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.headers().get("content-type").unwrap(), "image/png");
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(bytes.as_ref(), png_bytes().as_slice());
+    }
+
+    // 2) Garbage cookie value → 401.
+    #[tokio::test]
+    async fn garbage_cookie_download_is_unauthorized() {
+        let db = crate::db::open_memory().unwrap();
+        let app = real_middleware_app(db.clone());
+        let (_uid, session) = user_with_session(&db, "garbageuser");
+        let att_id = upload_png(&app, &session).await;
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/attachments/{att_id}"))
+                    // A well-formed-looking but invalid session token.
+                    .header("cookie", "lific_token=lific_sess_not_a_real_token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // 3) Cookie carrying an API key (valid key, wrong prefix) → 401.
+    #[tokio::test]
+    async fn api_key_in_cookie_download_is_unauthorized() {
+        let db = crate::db::open_memory().unwrap();
+        let app = real_middleware_app(db.clone());
+        let (_uid, session) = user_with_session(&db, "apikeyuser");
+        let att_id = upload_png(&app, &session).await;
+
+        // A genuinely valid API key — must still be refused via the cookie,
+        // because the cookie path accepts ONLY session tokens.
+        let manager = crate::auth::create_key_manager().unwrap();
+        let key = crate::auth::create_api_key(&db, &manager, "cookie-key").unwrap();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/attachments/{att_id}"))
+                    .header("cookie", format!("lific_token={key}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // 4) Cookie-authed DELETE → 401 (method not GET; mutations stay header-only).
+    #[tokio::test]
+    async fn cookie_authed_delete_is_unauthorized() {
+        let db = crate::db::open_memory().unwrap();
+        let app = real_middleware_app(db.clone());
+        let (_uid, session) = user_with_session(&db, "deleteuser");
+        let att_id = upload_png(&app, &session).await;
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/api/attachments/{att_id}"))
+                    .header("cookie", format!("lific_token={session}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // 5) Cookie-authed GET on the list route → 401 (path is not the download
+    //    route; the list endpoint stays header-only).
+    #[tokio::test]
+    async fn cookie_authed_list_route_is_unauthorized() {
+        let db = crate::db::open_memory().unwrap();
+        let app = real_middleware_app(db.clone());
+        let (_uid, session) = user_with_session(&db, "listuser");
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/attachments?entity_type=issue&entity_id=1")
+                    .header("cookie", format!("lific_token={session}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // 6) Cookie-authed GET on an unrelated route → 401.
+    #[tokio::test]
+    async fn cookie_authed_unrelated_route_is_unauthorized() {
+        let db = crate::db::open_memory().unwrap();
+        let app = real_middleware_app(db.clone());
+        let (_uid, session) = user_with_session(&db, "otheruser");
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/projects")
+                    .header("cookie", format!("lific_token={session}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+}
