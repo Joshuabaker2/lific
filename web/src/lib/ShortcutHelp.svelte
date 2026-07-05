@@ -40,12 +40,12 @@
   <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
   <div
     class="fixed inset-0 z-[100] bg-black/25 flex items-start justify-center
-           pt-[10vh] px-4"
+           pt-[10dvh] px-4"
     onclick={closeShortcutHelp}
   >
     <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
     <div
-      class="w-full max-w-[560px] max-h-[76vh] flex flex-col bg-[var(--surface)]
+      class="w-full max-w-[560px] max-h-[76dvh] flex flex-col bg-[var(--surface)]
              border border-[var(--border)] rounded-xl
              shadow-[0_16px_48px_rgba(0,0,0,0.28)] overflow-hidden"
       onclick={(e) => e.stopPropagation()}

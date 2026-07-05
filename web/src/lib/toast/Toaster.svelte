@@ -46,7 +46,7 @@
      time as they arrive, rather than the whole stack re-announcing on
      every change. -->
 <div
-  class="fixed z-[110] bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)]
+  class="fixed z-[110] bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)]
          max-w-sm flex flex-col items-center gap-2
          sm:left-auto sm:right-4 sm:translate-x-0 sm:items-end
          pointer-events-none"

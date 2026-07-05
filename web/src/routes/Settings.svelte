@@ -703,7 +703,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
       class="w-full max-w-[620px] bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl
-             max-h-[85vh] overflow-y-auto"
+             max-h-[85dvh] overflow-y-auto"
       onclick={(e) => e.stopPropagation()}
     >
       <!-- Header -->

@@ -54,13 +54,13 @@
   <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
   <div
     class="fixed inset-0 z-[100] bg-black/25 flex items-start justify-center
-           pt-[9vh] px-4"
+           pt-[9dvh] px-4"
     onclick={close}
     onkeydown={onKeydown}
   >
     <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
     <div
-      class="w-full max-w-[640px] max-h-[82vh] flex flex-col
+      class="w-full max-w-[640px] max-h-[82dvh] flex flex-col
              bg-[var(--surface)] border border-[var(--border)]
              rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.28)] overflow-hidden"
       onclick={(e) => e.stopPropagation()}

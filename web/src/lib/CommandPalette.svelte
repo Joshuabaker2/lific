@@ -563,7 +563,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
   <div
     class="fixed inset-0 z-[100] bg-black/25 flex items-start justify-center
-           pt-[14vh] px-4"
+           pt-[14dvh] px-4"
     onclick={hide}
   >
     <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->

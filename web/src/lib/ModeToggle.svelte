@@ -184,7 +184,8 @@
    */
   .mt--floating {
     position: fixed;
-    bottom: 1.5rem;
+    /* LIF-279: clear the home-indicator safe area on notched phones. */
+    bottom: max(1.5rem, env(safe-area-inset-bottom));
     right: 1.5rem;
     z-index: 30;
     /* Light single-stop shadow — enough to lift it off the page but

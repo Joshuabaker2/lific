@@ -252,7 +252,8 @@
 
   <div
     class="fixed z-[95] flex flex-col bg-[var(--surface)] shadow-2xl
-           inset-x-0 bottom-0 h-[85vh] rounded-t-xl border-t border-[var(--border)]
+           inset-x-0 bottom-0 h-[85dvh] rounded-t-xl border-t border-[var(--border)]
+           pb-[env(safe-area-inset-bottom)]
            md:inset-y-0 md:right-0 md:left-auto md:bottom-auto
            md:h-full md:w-[480px] md:max-w-[92vw]
            md:rounded-none md:border-t-0 md:border-l"
