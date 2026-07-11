@@ -20,11 +20,11 @@
   import Layout from "./lib/Layout.svelte";
   import ErrorState from "./lib/ErrorState.svelte";
   import Toaster from "./lib/toast/Toaster.svelte"; // LIF-243
-  import { hasSession, getInstance, autoLogin, saveSession } from "./lib/api";
+  import { hasSession, getInstance, autoLogin, saveSession, clearSession, me } from "./lib/api";
   import { REALTIME_INVALIDATE_EVENT, type RealtimeEvent } from "./lib/autoRefresh.svelte";
   import { motionReduced } from "./lib/theme";
   import { fade } from "svelte/transition";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
 
   // Path-style deep links (LIF-247): external tools (e.g. the Dashboard)
   // link to plain paths like /LIF/overview or /LIF/issues/LIF-42. The server
@@ -52,6 +52,8 @@
   let realtimeSocket: WebSocket | null = null;
   let realtimeReconnect: ReturnType<typeof setTimeout> | null = null;
   let realtimeDelayMs = 1000;
+  let realtimeNeedsResync = false;
+  let realtimeDisposed = false;
 
   onMount(async () => {
     if (!hasSession()) {
@@ -62,7 +64,12 @@
       }
     }
     bootstrapping = false;
-    syncRealtimeSocket();
+    if (!realtimeDisposed) syncRealtimeSocket();
+  });
+
+  onDestroy(() => {
+    realtimeDisposed = true;
+    closeRealtimeSocket();
   });
 
   function navigate(path: string) {
@@ -115,14 +122,16 @@
       realtimeReconnect = null;
     }
     realtimeDelayMs = 1000;
-    if (realtimeSocket) {
-      realtimeSocket.close(1000, "teardown");
-      realtimeSocket = null;
+    realtimeNeedsResync = false;
+    const socket = realtimeSocket;
+    realtimeSocket = null;
+    if (socket) {
+      socket.close(1000, "teardown");
     }
   }
 
   function scheduleRealtimeReconnect() {
-    if (!realtimeReconnect && hasSession()) {
+    if (!realtimeDisposed && !realtimeReconnect && hasSession() && !hasLiveRealtimeSocket()) {
       realtimeReconnect = window.setTimeout(() => {
         realtimeReconnect = null;
         syncRealtimeSocket();
@@ -139,7 +148,7 @@
   }
 
   function syncRealtimeSocket() {
-    const shouldConnect = hasSession() && !bootstrapping;
+    const shouldConnect = !realtimeDisposed && hasSession() && !bootstrapping;
     const shouldOpen = shouldConnect && !hasLiveRealtimeSocket();
 
     if (!shouldConnect) {
@@ -151,20 +160,48 @@
     }
   }
 
+  function dispatchRealtimeEvent(event: RealtimeEvent) {
+    window.dispatchEvent(
+      new CustomEvent<RealtimeEvent>(REALTIME_INVALIDATE_EVENT, { detail: event }),
+    );
+  }
+
+  async function reconnectAfterFailedRealtimeAttempt(sessionToken: string | null) {
+    const session = await me();
+
+    // A stale probe must not clear a session established after this socket
+    // attempt ended. Network failures have no HTTP status and must keep
+    // reconnecting so a temporarily unavailable server can recover.
+    if (realtimeDisposed || localStorage.getItem("lific_token") !== sessionToken) return;
+
+    if (!session.ok && session.status === 401) {
+      clearSession();
+      navigate("/login");
+      return;
+    }
+
+    scheduleRealtimeReconnect();
+  }
+
   function openRealtimeSocket() {
     const socket = new WebSocket(socketUrl());
     realtimeSocket = socket;
+    let opened = false;
     socket.addEventListener("open", () => {
+      if (realtimeSocket !== socket || realtimeDisposed) return;
+      opened = true;
       realtimeDelayMs = 1000;
+      if (realtimeNeedsResync) {
+        realtimeNeedsResync = false;
+        dispatchRealtimeEvent({ type: "resync.required" });
+      }
     });
     socket.addEventListener("message", (message) => {
       if (typeof message.data !== "string") return;
       try {
         const event = JSON.parse(message.data) as RealtimeEvent;
         if (typeof event?.type === "string") {
-          window.dispatchEvent(
-            new CustomEvent<RealtimeEvent>(REALTIME_INVALIDATE_EVENT, { detail: event }),
-          );
+          dispatchRealtimeEvent(event);
         }
       } catch {
         // HTTP refresh remains source of truth.
@@ -173,7 +210,12 @@
     socket.addEventListener("close", () => {
       if (realtimeSocket === socket) {
         realtimeSocket = null;
-        scheduleRealtimeReconnect();
+        realtimeNeedsResync = true;
+        if (opened) {
+          scheduleRealtimeReconnect();
+        } else {
+          void reconnectAfterFailedRealtimeAttempt(localStorage.getItem("lific_token"));
+        }
       }
     });
     socket.addEventListener("error", () => {
