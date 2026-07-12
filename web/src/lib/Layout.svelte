@@ -303,11 +303,17 @@
         order: "desc",
       });
       if (requestId !== recentRequest) return;
-      recentPages = res.ok ? res.data.slice(0, 5) : [];
+      // Archived pages are deliberately stashed — keep them out of recents.
+      recentPages = res.ok
+        ? res.data.filter((p) => p.status !== "archived").slice(0, 5)
+        : [];
     } else {
-      const res = await listPlans(projectId, undefined, 5);
+      // Over-fetch so filtering archived plans out can still yield 5 rows.
+      const res = await listPlans(projectId, undefined, 10);
       if (requestId !== recentRequest) return;
-      recentPlans = res.ok ? res.data : [];
+      recentPlans = res.ok
+        ? res.data.filter((p) => p.status !== "archived").slice(0, 5)
+        : [];
     }
 
     if (requestId === recentRequest) recentLoading = null;
