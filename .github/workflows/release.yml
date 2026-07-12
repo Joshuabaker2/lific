@@ -227,8 +227,24 @@ jobs:
           cd web
           bun install --frozen-lockfile
           bun run build
+      # Tolerate exactly one failure mode — the version already being on
+      # crates.io (idempotent re-run of the workflow) — and fail the job on
+      # everything else. The old `|| echo` swallowed ALL failures, which let
+      # a 403 auth error report success during v2.0.0 (LIF-288).
       - name: Publish to crates.io
-        run: cargo publish --allow-dirty --no-verify || echo "Publish failed (version may already exist)"
+        run: |
+          set -o pipefail
+          if out="$(cargo publish --allow-dirty --no-verify 2>&1)"; then
+            echo "$out"
+          else
+            echo "$out"
+            if echo "$out" | grep -qi "already uploaded\|already exists"; then
+              echo "::notice::Version already on crates.io; treating as success."
+            else
+              echo "::error::cargo publish failed."
+              exit 1
+            fi
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
