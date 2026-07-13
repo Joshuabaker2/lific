@@ -1202,9 +1202,9 @@ impl LificMcp {
             let issue = queries::get_issue(conn, id)?;
 
             let field = input.field.as_deref().unwrap_or("description");
-            // Normalize string-field inputs through the same `\n`/`\t`
-            // unescape pass that `update_issue` applies, so an edit
-            // sourced from a double-escaping client matches stored content.
+            // Normalize string-field inputs through the same proper-JSON
+            // heuristic that `update_issue` applies, so an edit sourced from
+            // a double-escaping client matches stored content.
             let (current, old_norm, new_norm) = match field {
                 "description" => (
                     issue.description.clone(),
@@ -1675,7 +1675,7 @@ impl LificMcp {
             let page = queries::get_page(conn, id)?;
 
             let field = input.field.as_deref().unwrap_or("content");
-            // Mirror update_page's `\n`/`\t` unescape on content so an
+            // Mirror update_page's proper-JSON heuristic on content so an
             // edit from a double-escaping client matches stored content.
             let (current, old_norm, new_norm) = match field {
                 "content" => (
@@ -5211,6 +5211,53 @@ mod tests {
         }));
         assert!(detail.contains("The quick red fox"), "got: {detail}");
         assert!(!detail.contains("brown"), "got: {detail}");
+    }
+
+    #[test]
+    fn create_and_edit_issue_preserves_literal_escapes_in_multiline_code() {
+        let m = mcp();
+        seed_project(&m, "Test", "ESC");
+        let description = "Example:\n```c\nprintf(\"\\n\");\n```\n";
+        let created = m.create_issue(Parameters(CreateIssueInput {
+            project: "ESC".into(),
+            title: "Preserve code escapes".into(),
+            description: Some(description.into()),
+            ..Default::default()
+        }));
+        assert!(created.starts_with("Created"), "got: {created}");
+
+        let detail = m.get_issue(Parameters(GetIssueInput {
+            identifier: "ESC-1".into(),
+            ..Default::default()
+        }));
+        assert!(detail.contains(description), "get_issue mangled content: {detail}");
+
+        let exported = m.export_issue(Parameters(ExportIssueInput {
+            identifier: "ESC-1".into(),
+        }));
+        assert!(
+            exported.contains(description.trim_end()),
+            "export_issue mangled content: {exported}"
+        );
+
+        let result = m.edit_issue(Parameters(EditIssueInput {
+            identifier: "ESC-1".into(),
+            old_string: "```c\nprintf(\"\\n\");\n```".into(),
+            new_string: "```c\nputs(\"hello\");\n```".into(),
+            field: None,
+            replace_all: None,
+        }));
+        assert!(result.starts_with("Edited"), "got: {result}");
+
+        let updated = m.get_issue(Parameters(GetIssueInput {
+            identifier: "ESC-1".into(),
+            ..Default::default()
+        }));
+        assert!(updated.contains("puts(\"hello\");"), "got: {updated}");
+        assert!(
+            !updated.contains("printf(\"\\n\");"),
+            "literal escape was not replaced: {updated}"
+        );
     }
 
     #[test]
